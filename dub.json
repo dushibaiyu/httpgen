@@ -5,7 +5,8 @@
 	],
 	"dependencies": {
 		"yu": {"path":"yu"},
-		"emsi_containers": "~>0.5.3"
+		"emsi_containers": "~>0.5.3",
+		"openssl" : "~>1.1.4+1.0.1g"
 	},
 	"description": "A minimal D application.",
 	"copyright": "Copyright © 2017, dsby",
