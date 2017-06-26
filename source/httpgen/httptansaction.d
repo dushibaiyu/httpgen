@@ -8,16 +8,16 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.httptansaction;
+module httpgen.httptansaction;
 
-import collie.codec.http.codec.httpcodec;
-import collie.codec.http.httpmessage;
-import collie.codec.http.errocode;
+import httpgen.codec.httpcodec;
+import httpgen.httpmessage;
+import httpgen.errocode;
 import collie.socket.tcpsocket;
 
 import std.socket;
 public import std.experimental.logger;
-import collie.codec.http.codec.wsframe;
+import httpgen.codec.wsframe;
 
 enum TransportDirection : ubyte {
 	DOWNSTREAM,  // toward the client
@@ -386,7 +386,7 @@ class HTTPTransaction
 	void sendTimeOut()
 	{
 		if(!transport) return;
-		import collie.codec.http.headers;
+		import httpgen.headers;
 		scope HTTPMessage msg = new HTTPMessage();
 		msg.statusCode(408);
 		msg.statusMessage("Request Timeout");

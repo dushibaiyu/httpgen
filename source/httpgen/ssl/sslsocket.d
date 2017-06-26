@@ -1,4 +1,6 @@
-module yu.asyncsocket.sslsocket;
+
+version(SSL_STAR) :
+// TODO: ssl sport
 
 import core.stdc.errno;
 import core.stdc.string;

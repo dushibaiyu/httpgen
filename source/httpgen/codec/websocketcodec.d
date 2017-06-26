@@ -8,14 +8,14 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.codec.websocketcodec;
+module httpgen.codec.websocketcodec;
 
-import collie.codec.http.codec.httpcodec;
-import collie.codec.http.httptansaction;
+import httpgen.codec.httpcodec;
+import httpgen.httptansaction;
 import std.bitmanip;
-import collie.codec.http.codec.wsframe;
-import collie.codec.http.httpmessage;
-import collie.codec.http.errocode;
+import httpgen.codec.wsframe;
+import httpgen.httpmessage;
+import httpgen.errocode;
 import std.conv;
 
 enum FRAME_SIZE_IN_BYTES = 512 * 512 * 2; //maximum size of a frame when sending a message

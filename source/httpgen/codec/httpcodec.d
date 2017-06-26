@@ -8,12 +8,12 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.codec.httpcodec;
+module httpgen.codec.httpcodec;
 
-import collie.codec.http.httpmessage;
-import collie.codec.http.errocode;
-import collie.codec.http.codec.wsframe;
-import collie.codec.http.httptansaction;
+import httpgen.httpmessage;
+import httpgen.errocode;
+import httpgen.codec.wsframe;
+import httpgen.httptansaction;
 import collie.utils.vector;
 
 import std.experimental.allocator.gc_allocator;

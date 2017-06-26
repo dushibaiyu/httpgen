@@ -1,34 +1,41 @@
-﻿module collie.codec.http.headers;
+﻿module chttpgenheaders;
 
-import collie.utils.string;
-import collie.utils.vector;
+import yu.string;
+import yu.container.string;
+import yu.container.vector;
 import core.stdc.string;
 import std.string;
 import std.array;
+import std.experimental.allocator.mallocator;
 
-public import collie.codec.http.headers.httpcommonheaders;
-public import collie.codec.http.headers.httpmethod;
+public import httpgen.headers.httpcommonheaders;
+public import httpgen.headers.httpmethod;
 
 struct HTTPHeaders
 {
-	alias HVector = Vector!(string);
+	alias StringArray = Vector!(String,Mallocator,false);
 	enum kInitialVectorReserve = 32;
 	
 	/**
-   * Remove all instances of the given header, returning true if anything was
-   * removed and false if this header didn't exist in our set.
-   */
+	* Remove all instances of the given header, returning true if anything was
+	* removed and false if this header didn't exist in our set.
+	*/
+	bool remove(ref String name)
+	{
+		remove(name.stdString());
+	}
+
 	bool remove(string name){
 		HTTPHeaderCode code = headersHash(name);
 		if(code != HTTPHeaderCode.OTHER)
 			return remove(code);
 		bool removed = false;
-		for(size_t i = 0; i < _headersNames.length; ++i){
+		foreach(size_t i, ref String str; _headersNames){
 			if(_codes[i] != HTTPHeaderCode.OTHER) continue;
 			if(isSameIngnoreLowUp(name,_headersNames[i])){
 				_codes[i] = HTTPHeaderCode.NONE;
-				_headersNames[i] = null;
-				_headerValues[i] = null;
+				_headersNames[i] = String();
+				_headerValues[i] = String();
 				_deletedCount ++;
 				removed = true;
 			}
@@ -38,56 +45,77 @@ struct HTTPHeaders
 
 	bool remove(HTTPHeaderCode code){
 		bool removed = false;
-		HTTPHeaderCode[] codes = _codes.data(false);
-		HTTPHeaderCode * ptr = codes.ptr;
-		const size_t len = codes.length;
+		HTTPHeaderCode * ptr = cast(HTTPHeaderCode *)_codes.ptr;
+		const size_t len = _codes.length;
 		while(true)
 		{
-			size_t tlen = len - (ptr - codes.ptr);
+			size_t tlen = len - (ptr - _codes.ptr);
 			ptr = cast(HTTPHeaderCode *)memchr(ptr,code,tlen);
 			if(ptr is null)
 				break;
 			tlen = ptr - codes.ptr;
 			ptr ++;
 			_codes[tlen] = HTTPHeaderCode.NONE;
-			_headersNames[tlen] = null;
-			_headerValues[tlen] = null;
+			_headersNames[tlen] = String();
+			_headerValues[tlen] = String();
 			_deletedCount ++;
 			removed = true;
 		}
 		return removed;
 	}
 
-	void add(string name, string value)
+	void add(STR)(auto ref STR name, auto ref STR value)
 	in{
 		assert(name.length > 0);
 	}
 	body{
-		HTTPHeaderCode code = headersHash(name);
+		static if(isStdString!STR){
+			HTTPHeaderCode code = headersHash(name);
+		} else {
+			HTTPHeaderCode code = headersHash(name.stdString());
+		}
 		_codes.insertBack(code);
-		_headersNames.insertBack((code == HTTPHeaderCode.OTHER) ? name : HTTPHeaderCodeName[code]);
-		_headerValues.insertBack(value);
+		if(code == HTTPHeaderCode.OTHER) {
+			_headersNames.append(String(HTTPHeaderCodeName[code]));
+		} else {
+			static if(isStdString!STR)
+				_headersNames.append(String(name));
+			else
+				_headersNames.append(name);
+		}
+		static if(isStdString!STR)
+				_headerValues.append(String(value));
+		else
+			_headerValues.append(value);
 
 	}
-	void add(HTTPHeaderCode code, string value)
+	void add(STR)(HTTPHeaderCode code, auto ref STR value)
 	{
 		if(code == HTTPHeaderCode.OTHER || code > HTTPHeaderCode.SEC_WEBSOCKET_ACCEPT)
 			return;
 		_codes.insertBack(code);
-		_headersNames.insertBack(HTTPHeaderCodeName[code]);
-		_headerValues.insertBack(value);
+		_headersNames.insertBack(String(HTTPHeaderCodeName[code]));
+		static if(isStdString!STR)
+				_headerValues.append(String(value));
+		else
+			_headerValues.append(value);
 	}
 
-	void set(string name,string value)
+	void set(STR)(auto ref STR name, auto ref STR value)
 	{
 		remove(name);
 		add(name, value);
 	}
 
-	void set(HTTPHeaderCode code, string value)
+	void set(HTTPHeaderCode code, auto ref STR value)
 	{
 		remove(code);
 		add(code, value);
+	}
+
+	bool exists(ref String name)
+	{
+		exists(name.stdString);
 	}
 
 	bool exists(string name)
@@ -95,9 +123,9 @@ struct HTTPHeaders
 		HTTPHeaderCode code = headersHash(name);
 		if(code != HTTPHeaderCode.OTHER)
 			return exists(code);
-		for(size_t i = 0; i < _headersNames.length; ++i){
+		foreach(size_t i, ref String str; _headersNames){
 			if(_codes[i] != HTTPHeaderCode.OTHER) continue;
-			if(isSameIngnoreLowUp(name,_headersNames[i])){
+			if(isSameIngnoreLowUp(name, str.stdString)){
 				return true;
 			}
 		}
@@ -106,8 +134,7 @@ struct HTTPHeaders
 
 	bool exists(HTTPHeaderCode code)
 	{
-		HTTPHeaderCode[] codes = _codes.data(false);
-		return memchr(codes.ptr,code,codes.length) != null;
+		return memchr(_codes.ptr,code,_codes.length) != null;
 	}
 
 	void removeAll()
@@ -118,24 +145,24 @@ struct HTTPHeaders
 		_deletedCount = 0;
 	}
 
-	int opApply(scope int delegate(string name,string value) opeartions)
+	int opApply(scope int delegate(ref String name,ref String value) opeartions)
 	{
 		int result = 0;
-		for(size_t i = 0; i < _headersNames.length; ++i)
-		{
-			result = opeartions(_headersNames[i], _headerValues[i]);
+		foreach(size_t i, ref String str; _headersNames){
+			if(_codes[i] == HTTPHeaderCode.NONE) continue;
+			result = opeartions(str, _headerValues[i]);
 			if(result)
 				break;
 		}
 		return result;
 	}
 
-	int opApply(scope int delegate(HTTPHeaderCode code,string name,string value) opeartions)
+	int opApply(scope int delegate(HTTPHeaderCode code,ref String name,ref String value) opeartions)
 	{
 		int result = 0;
-		for(size_t i = 0; i < _headersNames.length; ++i)
-		{
-			result = opeartions(_codes[i],_headersNames[i], _headerValues[i]);
+		foreach(size_t i, ref String str; _headersNames){
+			if(_codes[i] == HTTPHeaderCode.NONE) continue;
+			result = opeartions(_codes[i], str , _headerValues[i]);
 			if(result)
 				break;
 		}
@@ -151,7 +178,7 @@ struct HTTPHeaders
 
 	void copyTo(ref HTTPHeaders header)
 	{
-		foreach(code,name,value; this)
+		foreach(code,ref name,ref value; this)
 		{
 			if(code == HTTPHeaderCode.NONE) continue;
 			if(code == HTTPHeaderCode.OTHER)
@@ -169,22 +196,22 @@ struct HTTPHeaders
 	/**
    * combine all the value for this header into a string
    */
-	string combine(string separator = ", ")
+	String combine(string separator = ", ")
 	{
-		Appender!string data = appender!string();
+		String str = String();
 		bool frist = true;
-		foreach(code,name,value; this)
+		foreach(code,ref name,ref value; this)
 		{
 			if(code == HTTPHeaderCode.NONE) continue;
 			if(frist) {
-				data.put(value);
+				str ~= value;
 				frist = false;
 			} else {
-				data.put(separator);
-				data.put(value);
+				str ~= separator;
+				str ~= value;
 			}
 		}
-		return data.data;
+		return str;
 	}
 
 	size_t getNumberOfValues(string name)
@@ -193,9 +220,9 @@ struct HTTPHeaders
 		if(code != HTTPHeaderCode.OTHER)
 			return remove(code);
 		size_t index = 0;
-		for(size_t i = 0; i < _headersNames.length; ++i){
+		foreach(size_t i, ref String str; _headersNames){
 			if(_codes[i] != HTTPHeaderCode.OTHER) continue;
-			if(isSameIngnoreLowUp(name,_headersNames[i])){
+			if(isSameIngnoreLowUp(name,str.stdString)){
 				++index;
 			}
 		}
@@ -220,27 +247,26 @@ struct HTTPHeaders
 		return index;
 	}
 
-	string getSingleOrEmpty(string  name)  {
+	String getSingleOrEmpty(string  name)  {
 		HTTPHeaderCode code = headersHash(name);
 		if(code != HTTPHeaderCode.OTHER)
 			return getSingleOrEmpty(code);
-		for(size_t i = 0; i < _headersNames.length; ++i){
+		foreach(size_t i, ref String str; _headersNames){
 			if(_codes[i] != HTTPHeaderCode.OTHER) continue;
-			if(isSameIngnoreLowUp(name,_headersNames[i])){
+			if(isSameIngnoreLowUp(name,str.stdString)){
 				return _headerValues[i];
 			}
 		}
-		return string.init;
+		return String();
 	}
 
-	string getSingleOrEmpty(HTTPHeaderCode code)  {
-		HTTPHeaderCode[] codes = _codes.data(false);
-		HTTPHeaderCode * ptr = cast(HTTPHeaderCode *)memchr(codes.ptr,code,codes.length);
+	String getSingleOrEmpty(HTTPHeaderCode code)  {
+		HTTPHeaderCode * ptr = cast(HTTPHeaderCode *)memchr(_codes.ptr,code,_codes.length);
 		if(ptr !is null){
 			size_t index = ptr - codes.ptr;
 			return _headerValues[index];
 		}
-		return string.init;
+		return String();
 	}
 
 	/**
@@ -255,16 +281,21 @@ struct HTTPHeaders
    * This method returns true if processing was stopped (by func returning
    * true), and false otherwise.
    */
-	alias LAMBDA = bool delegate(string value);
+	alias LAMBDA = bool delegate(ref String value);
+	bool forEachValueOfHeader(ref String name, scope LAMBDA func)
+	{
+		forEachValueOfHeader(name.stdString,func);
+	}
+
 	bool forEachValueOfHeader(string name,scope LAMBDA func)
 	{
 		HTTPHeaderCode code = headersHash(name);
 		if(code != HTTPHeaderCode.OTHER)
 			return forEachValueOfHeader(code,func);
 		size_t index = 0;
-		for(size_t i = 0; i < _headersNames.length; ++i){
+		foreach(size_t i, ref String str; _headersNames){
 			if(_codes[i] != HTTPHeaderCode.OTHER) continue;
-			if(isSameIngnoreLowUp(name,_headersNames[i])){
+			if(isSameIngnoreLowUp(name,str.stdString)){
 				if(func(_headerValues[i]))
 					return true;
 			}
@@ -275,12 +306,11 @@ struct HTTPHeaders
 	bool forEachValueOfHeader(HTTPHeaderCode code,scope LAMBDA func)
 	{
 		size_t index = 0;
-		HTTPHeaderCode[] codes = _codes.data(false);
-		HTTPHeaderCode * ptr = codes.ptr;
-		const size_t len = codes.length;
+		HTTPHeaderCode * ptr = cast(HTTPHeaderCode *)_codes.ptr;
+		const size_t len = _codes.length;
 		while(true)
 		{
-			size_t tlen = len - (ptr - codes.ptr);
+			size_t tlen = len - (ptr - _codes.ptr);
 			ptr = cast(HTTPHeaderCode *)memchr(ptr,code,tlen);
 			if(ptr is null)
 				break;
@@ -291,9 +321,14 @@ struct HTTPHeaders
 		}
 		return false;
 	}
-private:
+private :
 	Vector!(HTTPHeaderCode) _codes ;// = Vector!(HTTPHeaderCode)(2);
-	HVector _headersNames ;
-	HVector _headerValues ;
+	StringArray _headersNames ;
+	StringArray _headerValues ;
 	size_t _deletedCount = 0;
+}
+
+template isStdString(STR)
+{
+	enum isStdString = (is(STR == string));
 }

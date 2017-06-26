@@ -8,7 +8,7 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.codec.wsframe;
+module httpgen.codec.wsframe;
 
 enum WebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -116,7 +116,7 @@ struct WSFrame
 	
 	ubyte[] data;
 
-package (collie.codec.http.codec):  
+package (httpgen.codec):  
 	
 	bool _isFinalFrame;
 	bool _rsv1;

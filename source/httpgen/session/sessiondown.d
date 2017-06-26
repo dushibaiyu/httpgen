@@ -8,10 +8,10 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.session.sessiondown;
+module httpgen.session.sessiondown;
 
 import collie.channel;
-import collie.codec.http.session.httpsession;
+import httpgen.session.httpsession;
 import std.socket;
 import collie.socket.tcpsocket;
 import collie.socket.eventloop;

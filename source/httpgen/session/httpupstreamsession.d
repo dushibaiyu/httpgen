@@ -8,19 +8,19 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.session.httpupstreamsession;
+module httpgen.session.httpupstreamsession;
 
 import std.exception;
 
-import collie.codec.http.session.httpsession;
-import collie.codec.http.headers;
-import collie.codec.http.codec.wsframe;
-import collie.codec.http.httpmessage;
-import collie.codec.http.httptansaction;
-import collie.codec.http.codec.httpcodec;
+import httpgen.session.httpsession;
+import httpgen.headers;
+import httpgen.codec.wsframe;
+import httpgen.httpmessage;
+import httpgen.httptansaction;
+import httpgen.codec.httpcodec;
 import std.base64;
 import std.digest.sha;
-import collie.codec.http.codec.websocketcodec;
+import httpgen.codec.websocketcodec;
 
 final class HTTPDownstreamSession : HTTPSession
 {

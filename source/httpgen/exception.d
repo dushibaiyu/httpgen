@@ -8,7 +8,7 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.exception;
+module httpgen.exception;
 
 import std.exception;
 

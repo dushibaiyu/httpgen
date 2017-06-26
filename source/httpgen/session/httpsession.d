@@ -8,14 +8,14 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.session.httpsession;
+module httpgen.session.httpsession;
 
-import collie.codec.http.headers;
-import collie.codec.http.httpmessage;
-import collie.codec.http.httptansaction;
-import collie.codec.http.codec.httpcodec;
-import collie.codec.http.codec.wsframe;
-import collie.codec.http.errocode;
+import httpgen.headers;
+import httpgen.httpmessage;
+import httpgen.httptansaction;
+import httpgen.codec.httpcodec;
+import httpgen.codec.wsframe;
+import httpgen.errocode;
 
 import collie.socket.tcpsocket;
 import collie.utils.functional;

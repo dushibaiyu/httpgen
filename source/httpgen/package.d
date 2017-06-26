@@ -8,9 +8,9 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http;
+module httpgen;
 
-public import collie.codec.http.headers;
-public import collie.codec.http.httpmessage;
-public import collie.codec.http.errocode;
-public import collie.codec.http.exception;
+public import httpgen.headers;
+public import httpgen.httpmessage;
+public import httpgen.errocode;
+public import httpgen.exception;

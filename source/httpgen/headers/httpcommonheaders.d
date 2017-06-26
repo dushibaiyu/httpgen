@@ -1,18 +1,8 @@
-﻿/*
- * Collie - An asynchronous event-driven network framework using Dlang development
- *
- * Copyright (C) 2015-2017  Shanghai Putao Technology Co., Ltd 
- *
- * Developer: putao's Dlang team
- *
- * Licensed under the Apache-2.0 License.
- *
- */
-module collie.codec.http.headers.httpcommonheaders;
+﻿module httpgen.headers.httpcommonheaders;
 
-import collie.utils.string;
+import yu.string;
 
-enum HTTPHeaderCode : ubyte {
+enum HTTPHeaderCode : ushort {
 	// code reserved to indicate the absence of an HTTP header
 	NONE = 0,
 	// code for any HTTP header name not in the list of common headers
@@ -109,7 +99,10 @@ enum HTTPHeaderCode : ubyte {
 
 mixin(buildEnum!HTTPHeaderCode());
 
-string capitalizeHeader(string name)
+
+private:
+
+string capitalizeHeader(string name) // Run in build!
 {
 	import std.uni;
 	import std.array;
@@ -121,7 +114,7 @@ string capitalizeHeader(string name)
 	}
 	return join(parts, "-");
 }
-private:
+
 string buildEnum(T)()
 {
 	import std.uni;
@@ -143,7 +136,7 @@ string buildEnum(T)()
 	}
 	codename = codename[0..codename.length - 1];
 	codename ~= "];\n ";
-	string funn = "HTTPHeaderCode headersHash(string name){\n HTTPHeaderCode code = HTTPHeaderCode.OTHER; \n switch (name.length) {\n";
+	string funn = "HTTPHeaderCode headersHash(string name) @safe {\n HTTPHeaderCode code = HTTPHeaderCode.OTHER; \n switch (name.length) {\n";
 	foreach(size_t index,TMPV[] ls; list)
 	{
 		if(ls.length > 0) {

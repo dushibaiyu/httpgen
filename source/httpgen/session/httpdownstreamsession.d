@@ -8,19 +8,19 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.session.httpdownstreamsession;
+module httpgen.session.httpdownstreamsession;
 
 import std.exception;
 
-import collie.codec.http.session.httpsession;
-import collie.codec.http.headers;
-import collie.codec.http.codec.wsframe;
-import collie.codec.http.httpmessage;
-import collie.codec.http.httptansaction;
-import collie.codec.http.codec.httpcodec;
+import httpgen.session.httpsession;
+import httpgen.headers;
+import httpgen.codec.wsframe;
+import httpgen.httpmessage;
+import httpgen.httptansaction;
+import httpgen.codec.httpcodec;
 import std.base64;
 import std.digest.sha;
-import collie.codec.http.codec.websocketcodec;
+import httpgen.codec.websocketcodec;
 
 final class HTTPDownstreamSession : HTTPSession
 {
@@ -38,7 +38,7 @@ protected:
 		{
 			try{
 				enum string _404 = "<h1>Not Found!</h1><p>the http RequestHandle is null!</p>";
-				import collie.codec.http.headers;
+				import httpgen.headers;
 				import std.typecons;
 				import std.conv;
 				scope HTTPMessage rmsg = new HTTPMessage();

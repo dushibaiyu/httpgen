@@ -8,7 +8,7 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.errocode;
+module httpgen.errocode;
 
 enum HTTPErrorCode {
 	NO_ERROR = 0,

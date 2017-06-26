@@ -8,14 +8,14 @@
  * Licensed under the Apache-2.0 License.
  *
  */
-module collie.codec.http.codec.http1xcodec;
+module httpgen.codec.http1xcodec;
 
-import collie.codec.http.codec.httpcodec;
-import collie.codec.http.errocode;
-import collie.codec.http.headers;
-import collie.codec.http.httpmessage;
-import collie.codec.http.httptansaction;
-import collie.codec.http.parser;
+import httpgen.codec.httpcodec;
+import httpgen.errocode;
+import httpgen.headers;
+import httpgen.httpmessage;
+import httpgen.httptansaction;
+import httpgen.parser;
 import collie.utils.string;
 import std.array;
 import std.conv;
