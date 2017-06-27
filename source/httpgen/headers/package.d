@@ -1,4 +1,4 @@
-﻿module chttpgenheaders;
+﻿module httpgen.headers;
 
 import yu.string;
 import yu.container.string;

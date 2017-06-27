@@ -14,9 +14,6 @@ import httpgen.httpmessage;
 import httpgen.errocode;
 import httpgen.codec.wsframe;
 import httpgen.httptansaction;
-import collie.utils.vector;
-
-import std.experimental.allocator.gc_allocator;
 
 enum CodecProtocol : ubyte {
 	init = 0,
@@ -27,6 +24,13 @@ enum CodecProtocol : ubyte {
 //	SPDY_3_1_HPACK,
 	HTTP_2 = 3
 };
+
+
+interface ICodecBuffer
+{
+    void put(ubyte[] data);
+    void put(ubyte data);
+}
 
 abstract class HTTPCodec
 {
@@ -42,7 +46,6 @@ abstract class HTTPCodec
    * StreamID.
    */
 	alias StreamID = uint;
-	alias HVector = Vector!(ubyte);
 
 	this()
 	{}
@@ -349,7 +352,7 @@ abstract class HTTPCodec
 	size_t generateHeader(
 		HTTPTransaction txn,
 		HTTPMessage msg,
-		ref HVector buffer,
+		ICodecBuffer buffer,
 		bool eom = false);
 		//HTTPHeaderSize* size = nullptr);
 	
@@ -366,7 +369,7 @@ abstract class HTTPCodec
    * @return number of bytes written
    */
 	size_t generateBody(HTTPTransaction txn,
-		ref HVector chain,
+		ICodecBuffer chain,
 		bool eom);
 
 	/**
@@ -374,7 +377,7 @@ abstract class HTTPCodec
    */
 	size_t generateChunkHeader(
 		HTTPTransaction txn,
-		ref HVector buffer,
+		ICodecBuffer buffer,
 		size_t length);
 	
 	/**
@@ -382,7 +385,7 @@ abstract class HTTPCodec
    */
 	size_t generateChunkTerminator(
 		HTTPTransaction txn,
-		ref HVector buffer);
+		ICodecBuffer buffer);
 
 	/**
    * Generate any protocol framing needed to finalize an egress
@@ -391,18 +394,18 @@ abstract class HTTPCodec
    * @return number of bytes written
    */
 	size_t generateEOM(HTTPTransaction txn,
-		ref HVector buffer);
+		ICodecBuffer buffer);
 	
 	/**
    * Generate any protocol framing needed to abort a connection.
    * @return number of bytes written
    */
 	size_t generateRstStream(HTTPTransaction txn,
-		ref HVector buffer,HTTPErrorCode code);
+		ICodecBuffer buffer,HTTPErrorCode code);
 
 
 	size_t generateWsFrame(HTTPTransaction txn,
-		ref HVector buffer,OpCode code, ubyte[] data)
+		ICodecBuffer buffer,OpCode code, ubyte[] data)
 	{
 		return 0;
 	}

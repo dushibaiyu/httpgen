@@ -20,11 +20,19 @@ import std.variant;
 import std.conv;
 import std.exception;
 import std.string;
+import yu.container.string;
+import yu.algorithm.hash;
+import containers.hashmap;
+import std.algorithm.mutation;
+import std.experimental.allocator.mallocator;
 public import std.experimental.logger;
+import yu.tools.http1xparser;
 
 
 final class HTTPMessage
 {
+    alias QueryMap = HashMap!(string,string, Mallocator,Murmur3Hash!char,false);
+
 	this()
 	{
 		_version[0] = 1;
@@ -67,67 +75,67 @@ final class HTTPMessage
    * Set/Get client address
    */
 	@property void clientAddress(Address addr) {
-		request()._clientAddress = addr;
-		request()._clientIP = addr.toAddrString();
-		request()._clientPort = addr.toPortString;
+		clientIP = addr.toAddrString();
+        request._clientIP = clientIP;
+        auto port = addr.toPortString;
+        request._clientPort = port;
+        import yu.memory.gc;
+        gcFree(clientIP); gcFree(port);
 	}
 	
-	@property Address clientAddress() {
-		return request()._clientAddress;
-	}
 
-	string getClientIP()  {
-		return request()._clientIP;
+	auto getClientIP()  {
+		return request._clientIP;
 	}
 	
-	string getClientPort()  {
-		return request()._clientPort;
+	auto getClientPort()  {
+		return request._clientPort;
 	}
 
 	/**
    * Set/Get destination (vip) address
    */
 	@property void dstAddress(Address addr) {
-		_dstAddress = addr;
-		_dstIP = addr.toAddrString;
-		_dstPort = addr.toPortString;
+		auto dstIP = addr.toAddrString;
+        _dstIP = dstIP;
+		auto dstPort = addr.toPortString;
+        _dstPort = dstPort;
+        import yu.memory.gc;
+        gcFree(dstIP); gcFree(dstPort);
 	}
 	
-	@property Address dstAddress()  {
-		return _dstAddress;
-	}
 
-	string getDstIP()  {
+	auto getDstIP()  {
 		return _dstIP;
 	}
 	
-	string getDstPort()  {
+	auto getDstPort()  {
 		return _dstPort;
 	}
 	
 	/**
    * Set/Get the local IP address
    */
-	@property void localIp(string ip) {
+	@property void localIp(STR)(auto ref STR ip) {
 		_localIP = ip;
 	}
-	@property string localIp()  {
+	@property String localIp() {
 		return _localIP;
 	}
 
 	@property void method(HTTPMethod method)
 	{
-		request()._method = method;
+		request._method = method;
 	}
 
 	@property HTTPMethod method()
 	{
-		return request()._method;
+		return request._method;
 	}
 	//void setMethod(folly::StringPiece method);
-
+    // it is from static
 	string methodString(){
-		return method_strings[request()._method];
+		return method_strings[request._method];
 	}
 
 	void setHTTPVersion(ubyte maj, ubyte min)
@@ -146,16 +154,16 @@ final class HTTPMessage
 
 	@property void url(string url){ 
 		auto idx = url.indexOf('?');
-		if (idx > 0){
-			request()._path = url[0..idx];
-			request()._query = url[idx+1..$];
-		} else {
-			request()._path = url;
-		}
-		request()._url = url;
+		request._url = url;
+        if (idx > 0){
+            request._path = request._ur[0..idx];
+            request._query = request._ur[idx+1..$];
+        } else {
+            request._path = request._ur;
+        }
 	}
 
-	@property string url(){return request()._url;}
+	@property string url(){return request._url;}
 
 
 	@property wantsKeepAlive(){return _wantsKeepalive;}
@@ -163,25 +171,25 @@ final class HTTPMessage
 	/**
    * Access the path component (fpreq)
    */
-	string getPath()
+    String getPath()
 	{
-		return request()._path;
+		return request._path;
 	}
 	
 	/**
    * Access the query component (fpreq)
    */
-	string getQueryString()
+	String getQueryString()
 	{
-		return request()._query;
+		return request._query;
 	}
 
-	@property void statusMessage(string msg) {
-		response()._statusMsg = msg;
+	@property void statusMessage(STR)(auto ref STR msg) {
+		response._statusMsg = msg;
 	}
-	@property string statusMessage()
+	@property String statusMessage()
 	{
-		return response()._statusMsg;
+		return response._statusMsg;
 	}
 
 	/**
@@ -260,7 +268,7 @@ final class HTTPMessage
    * @param contentLength     the length of the data to be written out through
    *                          this message
    */
-	void constructDirectResponse(ubyte maj,ubyte min,const int statucode,string statusMsg,int contentLength = 0)
+	void constructDirectResponse(Str)(ubyte maj,ubyte min,const int statucode,auto Str statusMsg,int contentLength = 0)
 	{
 		statusCode(cast(ushort)statucode);
 		statusMessage(statusMsg);
@@ -303,10 +311,15 @@ final class HTTPMessage
    * specified name.  The returned value is only valid as long as this
    * HTTPMessage object.
    */
+    // from GC
 	string getQueryParam(string name)
 	{
 		parseQueryParams();
-		return _queryParams.get(name,string.init);
+        string v = _queryParams.get(name,string.init);
+        if(v == string.init)
+            return v;
+        else
+            return v.idup;
 	}
 	/**
    * Get the query parameter with the specified name after percent decoding.
@@ -314,6 +327,7 @@ final class HTTPMessage
    * Returns empty string if parameter is missing or folly::uriUnescape
    * query param
    */
+    // from GC
 	string getDecodedQueryParam(string name)
 	{
 		import std.uri;
@@ -330,7 +344,10 @@ final class HTTPMessage
    * Returns empty string if parameter is missing or folly::uriUnescape
    * query param
    */
-	string[string] queryParam(){parseQueryParams();return _queryParams;}
+	auto queryParam(){
+        parseQueryParams();
+        return _queryParams;
+    }
 
 	/**
    * Set the query string to the specified value, and recreate the url_.
@@ -376,7 +393,7 @@ final class HTTPMessage
 	bool isResponse() const {
 		return _isRequest == MegType.Response_;
 	}
-
+    //from static
 	static string statusText(ushort code)
 	{
         return HTTPStatusCode.get(code,"");
@@ -390,56 +407,29 @@ protected:
    */
 	struct Request 
 	{
-		Address _clientAddress;
-		string _clientIP;
-		string _clientPort;
+        String _clientIP;
+        String _clientPort;
 		HTTPMethod _method = HTTPMethod.HTTP_INVAILD;
-		string _path;
-		string _query;
-		string _url;
+        String _path;
+        String _query;
+        String _url;
 			
-		//ushort _pushStatus;
-		//string _pushStatusStr;
+		ushort _pushStatus;
+        String _pushStatusStr;
 	}
 	
 	struct Response 
 	{
 		ushort _status = 200;
-		string _statusStr;
-		string _statusMsg;
+		String _statusStr;
+        String _statusMsg;
 	}
-
-	ref Request request() 
-	{
-		if(_isRequest == MegType.Null_) {
-			_isRequest = MegType.Request_;
-			_resreq.req = Request();
-		} else if(_isRequest == MegType.Response_){
-			throw new HTTPMessageTypeException("the message type is Response not Request");
-		}
-		return _resreq.req;
-	}
-
-	ref Response response()
-	{
-		if(_isRequest == MegType.Null_) {
-			_isRequest = MegType.Response_;
-			_resreq.res = Response();
-		} else if(_isRequest == MegType.Request_){
-			throw new HTTPMessageTypeException("the message type is Request not Response");
-		}
-
-		return _resreq.res;
-	}
-
-protected:
-	//void parseCookies(){}
-	
+protected:	
 	void parseQueryParams(){
 		import yu.string;
 		if(_parsedQueryParams) return;
 		_parsedQueryParams = true;
-		string query = getQueryString();
+        string query = request._query.stdString;
 		if(query.length == 0) return;
 		splitNameValue(query, '&', '=',(string name,string value){
 				name = strip(name);
@@ -448,16 +438,13 @@ protected:
 				return true;
 			});
 	}
+
 	void unparseQueryParams(){
-		_queryParams.clear();
+        QueryMap tmap;
+        swap(_queryParams, tmap);
 		_parsedQueryParams = false;
 	}
-
-	union Req_Res
-	{
-		Request req;
-		Response res;
-	}
+  
 
 	enum MegType : ubyte{
 		Null_,
@@ -466,19 +453,17 @@ protected:
 	}
 
 private:
-	Address _dstAddress;
-	string _dstIP;
-	string _dstPort;
+    String _dstIP;
+    String _dstPort;
 		
-	string _localIP;
-	string _versionStr;
+    String _localIP;
 	MegType _isRequest = MegType.Null_;
-	Req_Res _resreq;
+    Request request;
+    Response response;
 private:
 	ubyte[2] _version;
 	HTTPHeaders _headers;
-//	string[string] _cookies;
-	string[string] _queryParams;
+    QueryMap _queryParams;
 
 private:
 	bool _parsedCookies = false;

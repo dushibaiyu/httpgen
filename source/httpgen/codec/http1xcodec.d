@@ -16,12 +16,13 @@ import httpgen.headers;
 import httpgen.httpmessage;
 import httpgen.httptansaction;
 import httpgen.parser;
-import collie.utils.string;
+import yu.string;
+import yu.container.string;
 import std.array;
 import std.conv;
 import std.traits;
 
-class HTTP1XCodec : HTTPCodec
+final class HTTP1XCodec : HTTPCodec
 {
 	this(TransportDirection direction, uint maxHeaderSize = (64 * 1024))
 	{
@@ -38,8 +39,6 @@ class HTTP1XCodec : HTTPCodec
 		_parser.onChunkComplete(&onChunkComplete);
 		_parser.onBody(&onBody);
 		_parser.onMessageComplete(&onMessageComplete);
-		_currtKey = HVector(256);
-		_currtValue = HVector(256);
 	}
 
 	override CodecProtocol getProtocol() {
@@ -109,7 +108,7 @@ class HTTP1XCodec : HTTPCodec
 	override size_t generateHeader(
 		HTTPTransaction txn,
 		HTTPMessage msg,
-		ref HVector buffer,
+		ICodecBuffer buffer,
 		bool eom = false)
 	{
 		const bool upstream = (_transportDirection == TransportDirection.UPSTREAM);
@@ -212,7 +211,7 @@ class HTTP1XCodec : HTTPCodec
 	}
 
 	override size_t generateBody(HTTPTransaction txn,
-		ref HVector chain,
+		ICodecBuffer chain,
 		bool eom)
 	{
 		size_t rlen = 0;
@@ -228,7 +227,7 @@ class HTTP1XCodec : HTTPCodec
 
 	override size_t generateChunkHeader(
 		HTTPTransaction txn,
-		ref HVector buffer,
+		ICodecBuffer buffer,
 		size_t length)
 	{
 		trace("_egressChunked  ", _egressChunked);
@@ -246,7 +245,7 @@ class HTTP1XCodec : HTTPCodec
 
 	override size_t generateChunkTerminator(
 		HTTPTransaction txn,
-		ref HVector buffer)
+		ICodecBuffer buffer)
 	{
 		if(_egressChunked && _inChunk)
 		{
@@ -258,7 +257,7 @@ class HTTP1XCodec : HTTPCodec
 	}
 
 	override size_t generateEOM(HTTPTransaction txn,
-		ref HVector buffer)
+		ICodecBuffer buffer)
 	{
 		size_t rlen = 0;
 		if(_egressChunked) {
@@ -293,13 +292,13 @@ class HTTP1XCodec : HTTPCodec
 	}
 
 	override size_t  generateRstStream(HTTPTransaction txn,
-		ref HVector buffer,HTTPErrorCode code)
+		ICodecBuffer buffer,HTTPErrorCode code)
 	{
 		return 0;
 	}
 protected:
 
-	final void appendLiteral(T)(ref HVector buffer, T[] data) if(isSomeChar!(Unqual!T) || is(Unqual!T == byte) || is(Unqual!T == ubyte))
+	final void appendLiteral(T)(ICodecBuffer buffer, T[] data) if(isSomeChar!(Unqual!T) || is(Unqual!T == byte) || is(Unqual!T == ubyte))
 	{
 		buffer.insertBack(cast(ubyte[])data);
 	}

@@ -102,14 +102,14 @@ class WebsocketCodec : HTTPCodec
 	override size_t generateHeader(
 		HTTPTransaction txn,
 		HTTPMessage msg,
-		ref HVector buffer,
+		ICodecBuffer buffer,
 		bool eom = false)
 	{
 		return 0;
 	}
 	
 	override size_t generateBody(HTTPTransaction txn,
-		ref HVector chain,
+		ICodecBuffer chain,
 		bool eom)
 	{
 		return 0;
@@ -117,7 +117,7 @@ class WebsocketCodec : HTTPCodec
 	
 	override size_t generateChunkHeader(
 		HTTPTransaction txn,
-		ref HVector buffer,
+		ICodecBuffer buffer,
 		size_t length)
 	{
 		return 0;
@@ -126,25 +126,25 @@ class WebsocketCodec : HTTPCodec
 	
 	override size_t generateChunkTerminator(
 		HTTPTransaction txn,
-		ref HVector buffer)
+		ICodecBuffer buffer)
 	{
 		return 0;
 	}
 	
 	override size_t generateEOM(HTTPTransaction txn,
-		ref HVector buffer)
+		ICodecBuffer buffer)
 	{
 		return 0;
 	}
 
 	override size_t  generateRstStream(HTTPTransaction txn,
-		ref HVector buffer,HTTPErrorCode code)
+		ICodecBuffer buffer,HTTPErrorCode code)
 	{
 		return 0;
 	}
 
 	override size_t generateWsFrame(HTTPTransaction txn,
-		ref HVector buffer,OpCode code, ubyte[] data)
+		ICodecBuffer buffer,OpCode code, ubyte[] data)
 	{
 		buffer.clear();
 		if((code & 0x08) == 0x08 && (data.length > 125))
@@ -202,7 +202,7 @@ class WebsocketCodec : HTTPCodec
 protected:
 	bool doMask(){return _transportDirection ==  TransportDirection.UPSTREAM;}
 
-	void getFrameHeader(OpCode code, size_t payloadLength, bool lastFrame, ref HVector buffer)
+	void getFrameHeader(OpCode code, size_t payloadLength, bool lastFrame, ICodecBuffer buffer)
 	{
 		ubyte[2] wdata = [0, 0];
 		wdata[0] = cast(ubyte)((code & 0x0F) | (lastFrame ? 0x80 : 0x00));
