@@ -18,9 +18,47 @@ import httpgen.httptansaction;
 import httpgen.parser;
 import yu.string;
 import yu.container.string;
+import yu.tools.http1xparser;
+import yu.memory.allocator;
 import std.array;
 import std.conv;
 import std.traits;
+
+final class HTTP1XCodecBuffer : CodecBuffer
+{
+    import yu.container.vector;
+    import yu.exception;
+    import std.experimental.allocator.mallocator;
+
+    alias BufferData = Vector!(ubyte, Mallocator,false);
+
+    override ubyte[] data() nothrow {
+        auto dt = _data.data();
+        return cast(ubyte[])dt[sended..$];
+    }
+
+    override void doFinish() nothrow {
+        auto ptr = this;
+        yuCathException(yDel(ptr));
+    }
+
+    override bool popSize(size_t size) nothrow {
+        sended += size;
+        if(sended >= _data.length)
+            return true;
+        else
+            return false;
+    }
+
+    override void put(ubyte[] data)
+    {
+        _data.put(data);
+    }
+
+private:
+    BufferData _data;
+    uint sended = 0;
+}
 
 final class HTTP1XCodec : HTTPCodec
 {
@@ -29,6 +67,7 @@ final class HTTP1XCodec : HTTPCodec
 		_transportDirection = direction;
 		_finished = true;
 		_maxHeaderSize = maxHeaderSize;
+        _parser.rest(HTTPType.BOTH,_maxHeaderSize);
 		_parser.onUrl(&onUrl);
 		_parser.onMessageBegin(&onMessageBegin);
 		_parser.onHeaderComplete(&onHeadersComplete);
@@ -73,44 +112,32 @@ final class HTTP1XCodec : HTTPCodec
 	{
 		trace("on Ingress!!");
 		if(_finished) {
-			_parser.rest(HTTPParserType.HTTP_BOTH,_maxHeaderSize);
+			_parser.rest(HTTPType.BOTH,_maxHeaderSize);
 		}
 		auto size = _parser.httpParserExecute(buf);
-		if(size != buf.length && _parser.isUpgrade == false && _transaction && _callback){
-				_callback.onError(_transaction,HTTPErrorCode.PROTOCOL_ERROR);
+		if(size != buf.length && _parser.isUpgrade == false && _callback){
+				_callback.onError(0,HTTPErrorCode.PROTOCOL_ERROR);
 		}
 		return cast(size_t) size;
 	}
 
-	override void onConnectClose()
-	{
-		if(_transaction){
-			_transaction.onErro(HTTPErrorCode.REMOTE_CLOSED);
-			_transaction.handler = null;
-			_transaction.transport = null;
-			_transaction = null;
-		}
-	}
-
 	override void onTimeOut()
 	{
-		if(_transaction){
-			_transaction.onErro(HTTPErrorCode.TIME_OUT);
-		}
 	}
 
-	override void detach(HTTPTransaction txn)
+	override void detach(StreamID id)
 	{
-		if(txn is _transaction)
-			_transaction = null;
 	}
 
-	override size_t generateHeader(
-		HTTPTransaction txn,
-		HTTPMessage msg,
-		ICodecBuffer buffer,
-		bool eom = false)
+    CodecBuffer generateHeader(
+        StreamID id,
+        HTTPMessage msg,
+        StreamID assocStream = 0,
+        bool eom = false)
 	{
+        HTTP1XCodecBuffer buffer  = yNew!HTTP1XCodecBuffer();
+        scope(failure) yDel(buffer);
+
 		const bool upstream = (_transportDirection == TransportDirection.UPSTREAM);
 		const size_t beforLen = buffer.length;
 		auto hversion = msg.getHTTPVersion();
@@ -207,57 +234,57 @@ final class HTTP1XCodec : HTTPCodec
 		}
 
 		appendLiteral(buffer,"\r\n");
-		return buffer.length - beforLen;
+		return buffer;
 	}
 
-	override size_t generateBody(HTTPTransaction txn,
-		ICodecBuffer chain,
-		bool eom)
+    override CodecBuffer generateBody(StreamID id,
+        const ubyte[] data,CodecBuffer buffer,
+        bool eom)
 	{
-		size_t rlen = 0;
+        mixin(CheckBuffer);
+        appendLiteral(buffer,data);
 		if(_egressChunked && _inChunk) {
-			appendLiteral(chain,"\r\n");
+            appendLiteral(buffer,"\r\n");
 			_inChunk = false;
-			rlen += 2;
 		}
 		if(eom)
-			rlen += generateEOM(txn,chain);
-		return rlen;
+            buffer = generateEOM(id,buffer);
+        return buffer;
 	}
 
-	override size_t generateChunkHeader(
-		HTTPTransaction txn,
-		ICodecBuffer buffer,
-		size_t length)
+    override CodecBuffer generateChunkHeader(
+        StreamID id,
+        size_t length,CodecBuffer buffer = null)
 	{
 		trace("_egressChunked  ", _egressChunked);
 		if (_egressChunked){
 			import std.format;
 			_inChunk = true;
-			string lent = format("%x\r\n",length);
-			trace("length is : ", length, "  x is: ", lent);
-			appendLiteral(buffer,lent);
-			return lent.length;
+            mixin(CheckBuffer);
+            scope void put(char str)
+            {
+                char * ptr = &str;
+                appendLiteral(buffer,ptr[0..1]);
+            }
+            formattedWrite(&put,"%x\r\n",length);
 		}
-		return 0;
+		return buffer;
 	}
 
 
-	override size_t generateChunkTerminator(
-		HTTPTransaction txn,
-		ICodecBuffer buffer)
+    override CodecBuffer generateChunkTerminator(
+        StreamID id,CodecBuffer buffer = null)
 	{
 		if(_egressChunked && _inChunk)
 		{
+            mixin(CheckBuffer);
 			_inChunk = false;
 			appendLiteral(buffer,"\r\n");
-			return 2;
 		}
-		return 0;
+		return buffer;
 	}
 
-	override size_t generateEOM(HTTPTransaction txn,
-		ICodecBuffer buffer)
+    override generateEOM(StreamID id,CodecBuffer buffer = null)
 	{
 		size_t rlen = 0;
 		if(_egressChunked) {
@@ -265,18 +292,13 @@ final class HTTP1XCodec : HTTPCodec
 			if (_headRequest && _transportDirection == TransportDirection.DOWNSTREAM) {
 				_lastChunkWritten = true;
 			} else {
-				// appending a 0\r\n only if it's not a HEAD and downstream request
+                mixin(CheckBuffer);
 				if (!_lastChunkWritten) {
 					_lastChunkWritten = true;
-					//if (!(_headRequest &&
-					//		transportDirection_ == TransportDirection.DOWNSTREAM)) {
 					appendLiteral(buffer,"0\r\n");
-					rlen += 3;
-					//}
 				}
 				appendLiteral(buffer,"\r\n");
 			}
-			rlen += 2;
 		}
 		switch (_transportDirection) {
 			case TransportDirection.DOWNSTREAM:
@@ -288,25 +310,20 @@ final class HTTP1XCodec : HTTPCodec
 			default:
 				break;
 		}
-		return rlen;
+        return buffer;
 	}
 
-	override size_t  generateRstStream(HTTPTransaction txn,
-		ICodecBuffer buffer,HTTPErrorCode code)
-	{
-		return 0;
-	}
 protected:
 
-	final void appendLiteral(T)(ICodecBuffer buffer, T[] data) if(isSomeChar!(Unqual!T) || is(Unqual!T == byte) || is(Unqual!T == ubyte))
+    final void appendLiteral(T)(HTTP1XCodecBuffer buffer, T[] data) if(isSomeChar!(Unqual!T) || is(Unqual!T == byte) || is(Unqual!T == ubyte))
 	{
-		buffer.insertBack(cast(ubyte[])data);
+		buffer.put(cast(ubyte[])data);
 	}
 
-	void onMessageBegin(ref HTTPParser){
+	void onMessageBegin(ref HTTP1xParser){
 		_finished = false;
 		_headersComplete = false;
-		_message = new HTTPMessage();
+		_message = yNew!HTTPMessage();
 		if (_transportDirection == TransportDirection.DOWNSTREAM) {
 			_requestPending = true;
 			_responsePending = true;
@@ -318,14 +335,14 @@ protected:
 		if (_transportDirection == TransportDirection.UPSTREAM) {
 			_is1xxResponse = false;
 		}
-		_transaction = new HTTPTransaction(_transportDirection,0,0);
+        _transaction = yNew!HTTPTransaction(_transportDirection,0,0);
 		if(_callback)
 			_callback.onMessageBegin(_transaction, _message);
 		_currtKey.clear();
 		_currtValue.clear();
 	}
 	
-	void onHeadersComplete(ref HTTPParser parser){
+	void onHeadersComplete(ref HTTP1xParser parser){
 		_mayChunkEgress = ((parser.major == 1) && (parser.minor >= 1));
 		_message.setHTTPVersion(cast(ubyte)parser.major, cast(ubyte)parser.minor);
 		_egressUpgrade = parser.isUpgrade;
@@ -355,7 +372,7 @@ protected:
 		}
 	}
 	
-	void onMessageComplete(ref HTTPParser parser){
+	void onMessageComplete(ref HTTP1xParser parser){
 		_finished = true;
 		switch (_transportDirection) {
 			case TransportDirection.DOWNSTREAM:
@@ -374,17 +391,17 @@ protected:
 			_callback.onMessageComplete(_transaction,parser.isUpgrade);
 	}
 	
-	void onChunkHeader(ref HTTPParser parser){
+	void onChunkHeader(ref HTTP1xParser parser){
 		if(_callback)
 			_callback.onChunkHeader(_transaction,cast(size_t)parser.contentLength);
 	}
 	
-	void onChunkComplete(ref HTTPParser parser){
+	void onChunkComplete(ref HTTP1xParser parser){
 		if(_callback)
 			_callback.onChunkComplete(_transaction);
 	}
 	
-	void onUrl(ref HTTPParser parser, ubyte[] data, bool finish)
+	void onUrl(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
 		//trace("on Url");
 		_message.method = parser.methodCode();
@@ -401,7 +418,7 @@ protected:
 		}
 	}
 	
-	void onStatus(ref HTTPParser parser, ubyte[] data, bool finish)
+	void onStatus(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
 
 		_currtKey.insertBack(data);
@@ -412,13 +429,13 @@ protected:
 		}
 	}
 	
-	void onHeaderField(ref HTTPParser parser, ubyte[] data, bool finish)
+	void onHeaderField(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
 		//trace("on onHeaderField");
 		_currtKey.insertBack(data);
 	}
 	
-	void onHeaderValue(ref HTTPParser parser, ubyte[] data, bool finish)
+	void onHeaderValue(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
 	//	trace("on onHeaderField");
 		_currtValue.insertBack(data);
@@ -430,7 +447,7 @@ protected:
 		}
 	}
 	
-	void onBody(ref HTTPParser parser, ubyte[] data, bool finish)
+	void onBody(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
 		trace("on boday, length : ", data.length);
 		_callback.onBody(_transaction,data);
@@ -443,11 +460,10 @@ protected:
 private:
 	TransportDirection _transportDirection;
 	CallBack _callback;
-	HTTPTransaction _transaction;
 	HTTPMessage _message;
-	HVector _currtKey;
-	HVector _currtValue;
-	HTTPParser _parser;
+	String _currtKey;
+    String _currtValue;
+    HTTP1xParser _parser;
 
 	uint _maxHeaderSize;
 	bool _finished;
@@ -476,3 +492,9 @@ private:
 	bool _headersComplete = false;
 }
 
+private :
+enum string CheckBuffer = q{
+    if(buffer is null)
+        buffer  = yNew!HTTP1XCodecBuffer();
+    scope(failure) yDel(buffer);
+};
