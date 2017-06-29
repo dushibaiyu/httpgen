@@ -17,11 +17,12 @@ import httpgen.codec.wsframe;
 import httpgen.httpmessage;
 import httpgen.errocode;
 import std.conv;
+import httpgen.codec.http1xcodec : HTTP1XCodecBuffer, CheckBuffer;
 
 enum FRAME_SIZE_IN_BYTES = 512 * 512 * 2; //maximum size of a frame when sending a message
 
 
-class WebsocketCodec : HTTPCodec
+final class WebsocketCodec : HTTPCodec
 {
 	enum ProcessingState
 	{
@@ -108,45 +109,10 @@ class WebsocketCodec : HTTPCodec
 		return 0;
 	}
 	
-	override size_t generateBody(HTTPTransaction txn,
-		ICodecBuffer chain,
-		bool eom)
-	{
-		return 0;
-	}
-	
-	override size_t generateChunkHeader(
-		HTTPTransaction txn,
-		ICodecBuffer buffer,
-		size_t length)
-	{
-		return 0;
-	}
-	
-	
-	override size_t generateChunkTerminator(
-		HTTPTransaction txn,
-		ICodecBuffer buffer)
-	{
-		return 0;
-	}
-	
-	override size_t generateEOM(HTTPTransaction txn,
-		ICodecBuffer buffer)
-	{
-		return 0;
-	}
 
-	override size_t  generateRstStream(HTTPTransaction txn,
-		ICodecBuffer buffer,HTTPErrorCode code)
+    override CodecBuffer generateWsFrame(StreamID id,OpCode code,const ubyte[] data,CodecBuffer buffer = null)
 	{
-		return 0;
-	}
-
-	override size_t generateWsFrame(HTTPTransaction txn,
-		ICodecBuffer buffer,OpCode code, ubyte[] data)
-	{
-		buffer.clear();
+        mixin(CheckBuffer);
 		if((code & 0x08) == 0x08 && (data.length > 125))
 				data = data[0 .. 125];
 		if(code == OpCode.OpCodeClose)
@@ -172,11 +138,11 @@ class WebsocketCodec : HTTPCodec
 				: FRAME_SIZE_IN_BYTES;
 			
 			getFrameHeader(opcode, payloadLength, isLastFrame, buffer);
-			if (doMask)
+			if (doMask())
 			{
-				ubyte[4] mask = generateMaskingKey(); //TODO：生成mask
-				buffer.insertBack(mask[]);
-				buffer.insertBack(data);
+				ubyte[4] mask = generateMaskingKey(); 
+				buffer.put(mask[]);
+				buffer.put(data);
 				auto tdata = buffer.data(false);
 				for (size_t j = tdata.length - payloadLength; j < tdata.length; i++)
 				{
@@ -185,24 +151,26 @@ class WebsocketCodec : HTTPCodec
 			}
 			else
 			{
-				buffer.insertBack(data);
+				buffer.put(data);
 			}
 			bytesLeft -= payloadLength;
 			bytesWritten += payloadLength;
 		}
-		return buffer.length;
+        return buffer;
 	}
 
 	ubyte[4] generateMaskingKey() // Client will used
 	{
-		ubyte[4] code = [0, 0, 0, 0];
-		return code; //TODO：生成mask
+        import std.datetime;
+        import yu.bytes;
+        uint key = cast(uint)(Clock.currTime.toUnixTime!long());
+        return nativeToEndian!(false,uint)(key); 
 	}
 
 protected:
 	bool doMask(){return _transportDirection ==  TransportDirection.UPSTREAM;}
 
-	void getFrameHeader(OpCode code, size_t payloadLength, bool lastFrame, ICodecBuffer buffer)
+    void getFrameHeader(OpCode code, size_t payloadLength, bool lastFrame, CodecBuffer buffer)
 	{
 		ubyte[2] wdata = [0, 0];
 		wdata[0] = cast(ubyte)((code & 0x0F) | (lastFrame ? 0x80 : 0x00));
@@ -210,17 +178,17 @@ protected:
 			wdata[1] = 0x80;
 		if (payloadLength <= 125){
 			wdata[1] |= to!ubyte(payloadLength);
-			buffer.insertBack(wdata[]);
+            buffer.put(wdata[]);
 		} else if (payloadLength <= ushort.max) {
 			wdata[1] |= 126;
-			buffer.insertBack(wdata[]);
+            buffer.put(wdata[]);
 			ubyte[2] length = nativeToBigEndian(to!ushort(payloadLength));
-			buffer.insertBack(length[]);
+            buffer.put(length[]);
 		} else {
 			wdata[1] |= 127;
-			buffer.insertBack(wdata[]);
+            buffer.put(wdata[]);
 			auto length = nativeToBigEndian(payloadLength);
-			buffer.insertBack(length[]);
+            buffer.put(length[]);
 		}
 	}
 

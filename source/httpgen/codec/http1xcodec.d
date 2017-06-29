@@ -335,9 +335,8 @@ protected:
 		if (_transportDirection == TransportDirection.UPSTREAM) {
 			_is1xxResponse = false;
 		}
-        _transaction = yNew!HTTPTransaction(_transportDirection,0,0);
 		if(_callback)
-			_callback.onMessageBegin(_transaction, _message);
+			_callback.onMessageBegin(0, _message);
 		_currtKey.clear();
 		_currtValue.clear();
 	}
@@ -365,10 +364,10 @@ protected:
 			string upstring  = _message.getHeaders.getSingleOrEmpty(HTTPHeaderCode.UPGRADE);
 			CodecProtocol pro = getProtocolFormString(upstring);
 			if(_callback)
-				_callback.onNativeProtocolUpgrade(_transaction,pro,upstring,_message);
+				_callback.onNativeProtocolUpgrade(0,pro,upstring,_message);
 		} else {
 			if(_callback)
-				_callback.onHeadersComplete(_transaction,_message);
+				_callback.onHeadersComplete(0,_message);
 		}
 	}
 	
@@ -388,17 +387,17 @@ protected:
 			default: break;
 		}
 		if(_callback)
-			_callback.onMessageComplete(_transaction,parser.isUpgrade);
+			_callback.onMessageComplete(0,parser.isUpgrade);
 	}
 	
 	void onChunkHeader(ref HTTP1xParser parser){
 		if(_callback)
-			_callback.onChunkHeader(_transaction,cast(size_t)parser.contentLength);
+			_callback.onChunkHeader(0,cast(size_t)parser.contentLength);
 	}
 	
 	void onChunkComplete(ref HTTP1xParser parser){
 		if(_callback)
-			_callback.onChunkComplete(_transaction);
+			_callback.onChunkComplete(0);
 	}
 	
 	void onUrl(ref HTTP1xParser parser, ubyte[] data, bool finish)
@@ -450,7 +449,7 @@ protected:
 	void onBody(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
 		trace("on boday, length : ", data.length);
-		_callback.onBody(_transaction,data);
+		_callback.onBody(0,data);
 	}
 
 	bool responseBodyMustBeEmpty(ushort status) {
@@ -492,7 +491,7 @@ private:
 	bool _headersComplete = false;
 }
 
-private :
+package:
 enum string CheckBuffer = q{
     if(buffer is null)
         buffer  = yNew!HTTP1XCodecBuffer();

@@ -10,6 +10,8 @@
  */
 module httpgen.codec.wsframe;
 
+import yu.container.string;
+
 enum WebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 enum OpCode
@@ -125,6 +127,6 @@ package (httpgen.codec):
 	bool _isValid = false;
 	OpCode _opCode;
 	OpCode _lastCode;
-	string _closeReason;
+	String _closeReason;
 	CloseCode _closeCode;
 }
