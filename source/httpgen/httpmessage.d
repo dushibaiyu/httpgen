@@ -27,11 +27,32 @@ import std.algorithm.mutation;
 import std.experimental.allocator.mallocator;
 public import std.experimental.logger;
 import yu.tools.http1xparser;
+import yu.tools.http1xparser.url;
 
 
 final class HTTPMessage
 {
     alias QueryMap = HashMap!(string,string, Mallocator,Murmur3Hash!char,false);
+
+    struct Url
+    {
+        String scheme;
+        String host;
+        ushort port = 0;
+        String path;
+        String query;
+        String fargment;// FRAGMENT;
+        String usrInfo;
+        void clear(){
+            scheme = "";
+            host = "";
+            path = "";
+            fargment = "";
+            query = "";
+            usrInfo = "";
+            port = 0;
+        }
+    }
 
 	this()
 	{
@@ -152,18 +173,29 @@ final class HTTPMessage
 		return tv;
 	}
 
-	@property void url(string url){ 
-		auto idx = url.indexOf('?');
-		request._url = url;
-        if (idx > 0){
-            request._path = request._ur[0..idx];
-            request._query = request._ur[idx+1..$];
-        } else {
-            request._path = request._ur;
+	@property bool url(string url){ 
+        ParserdUrl purl;
+        if(httpParserURL(url,purl)){
+            if(purl.port > 0)
+                _url.port = purl.port;
+            if(purl.hasField(URLFieldsType.UF_HOST))
+                _url.host = purl.getField(url,URLFieldsType.UF_HOST);
+            if(purl.hasField(URLFieldsType.UF_PATH))
+                _url.path = purl.getField(url,URLFieldsType.UF_PATH);
+            if(purl.hasField(URLFieldsType.UF_SCHEMA))
+                _url.scheme = purl.getField(url,URLFieldsType.UF_SCHEMA);
+            if(purl.hasField(URLFieldsType.UF_QUERY))
+                _url.query = purl.getField(url,URLFieldsType.UF_QUERY);
+            if(purl.hasField(URLFieldsType.UF_FRAGMENT))
+                _url.fargment = purl.getField(url,URLFieldsType.UF_FRAGMENT);
+            if(purl.hasField(URLFieldsType.UF_USERINFO))
+                _url.usrInfo = purl.getField(url,URLFieldsType.UF_USERINFO);
+            return true;
         }
+        return false;
 	}
 
-	@property string url(){return request._url;}
+    @property ref Url url(){return _url;}
 
 
 	@property wantsKeepAlive(){return _wantsKeepalive;}
@@ -410,9 +442,9 @@ protected:
         String _clientIP;
         String _clientPort;
 		HTTPMethod _method = HTTPMethod.HTTP_INVAILD;
-        String _path;
-        String _query;
-        String _url;
+//        String _path;
+//        String _query;
+//        String _url;
 			
 		ushort _pushStatus;
         String _pushStatusStr;
@@ -460,6 +492,7 @@ private:
 	MegType _isRequest = MegType.Null_;
     Request request;
     Response response;
+    Url _url;
 private:
 	ubyte[2] _version;
 	HTTPHeaders _headers;

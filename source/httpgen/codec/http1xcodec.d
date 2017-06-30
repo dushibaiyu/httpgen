@@ -369,6 +369,7 @@ protected:
 			if(_callback)
 				_callback.onHeadersComplete(0,_message);
 		}
+        _message = null;
 	}
 	
 	void onMessageComplete(ref HTTP1xParser parser){
