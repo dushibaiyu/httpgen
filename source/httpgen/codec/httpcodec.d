@@ -18,6 +18,7 @@ import yu.asyncsocket.tcpsocket;
 import yu.memory.sharedref;
 import yu.exception;
 import std.experimental.allocator;
+import yu.container.string;
 
 enum CodecProtocol : ubyte {
 	init = 0,
@@ -52,7 +53,6 @@ private:
 
 abstract class HTTPCodec
 {
-
 	/**
    * Key that uniquely identifies a request/response pair within
    * (and only within) the scope of the codec.  Code outside the
@@ -65,7 +65,7 @@ abstract class HTTPCodec
    */
 	alias StreamID = uint;
 
-	interface CallBack
+	interface CallBack 
 	{
 		/**
      * Called when a new message is seen while parsing the ingress
@@ -92,6 +92,7 @@ abstract class HTTPCodec
      * @param msg      The message
      * @param size     Size of the ingress header
      */
+        // shoudle delete HTTPMessage
 	void onHeadersComplete(StreamID id,
 		HTTPMessage msg);
 		
@@ -226,9 +227,10 @@ abstract class HTTPCodec
      * Called upon receipt of a valid protocol switch.  Return false if
      * protocol switch could not be completed.
      */
+        // shoudle delete HTTPMessage
 		void onNativeProtocolUpgrade(StreamID id,
 			CodecProtocol protocol,
-			string protocolString,
+			String protocolString,
 			HTTPMessage msg);
 		/**
      * Return the number of open streams started by this codec callback.
@@ -365,7 +367,7 @@ abstract class HTTPCodec
    */
     CodecBuffer generateHeader(
 		StreamID id,
-		HTTPMessage msg,
+		scope HTTPMessage msg,
         StreamID assocStream = 0,
         bool eom = false){
         return null;
@@ -384,7 +386,7 @@ abstract class HTTPCodec
    * @return number of bytes written
    */
     CodecBuffer generateBody(StreamID id,
-        const ubyte[] data,CodecBuffer buffer,
+        in ubyte[] data,CodecBuffer buffer,
         bool eom){
         return null;
     }
@@ -425,7 +427,7 @@ abstract class HTTPCodec
     }
 
 
-    CodecBuffer generateWsFrame(StreamID id,OpCode code,const ubyte[] data,CodecBuffer buffer = null)
+    CodecBuffer generateWsFrame(StreamID id,OpCode code,in ubyte[] data,CodecBuffer buffer = null)
 	{
 		return null;
 	}

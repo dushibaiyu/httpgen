@@ -88,7 +88,7 @@ final class WebsocketCodec : HTTPCodec
 		return buf.length;
 	}
 
-    override CodecBuffer generateWsFrame(StreamID id,OpCode code,const ubyte[] data,CodecBuffer buffer = null)
+    override CodecBuffer generateWsFrame(StreamID id,OpCode code,in ubyte[] data,CodecBuffer buffer = null)
 	{
         mixin(CheckBuffer);
 		if((code & 0x08) == 0x08 && (data.length > 125))

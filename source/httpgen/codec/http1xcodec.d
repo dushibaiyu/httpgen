@@ -136,7 +136,7 @@ final class HTTP1XCodec : HTTPCodec
 
     override CodecBuffer generateHeader(
         StreamID id,
-        HTTPMessage msg,
+        scope HTTPMessage msg,
         StreamID assocStream = 0,
         bool eom = false)
 	{
@@ -243,7 +243,7 @@ final class HTTP1XCodec : HTTPCodec
 	}
 
     override CodecBuffer generateBody(StreamID id,
-        const ubyte[] data,CodecBuffer buffer,
+        in ubyte[] data,CodecBuffer buffer,
         bool eom)
 	{
         mixin(CheckBuffer);
@@ -373,7 +373,7 @@ protected:
 			auto upstring  = _message.getHeaders.getSingleOrEmpty(HTTPHeaderCode.UPGRADE);
 			CodecProtocol pro = getProtocolFormString(upstring.stdString);
 			if(_callback)
-                _callback.onNativeProtocolUpgrade(0,pro,upstring.stdString,_message);
+                _callback.onNativeProtocolUpgrade(0,pro,upstring,_message);
 		} else {
 			if(_callback)
 				_callback.onHeadersComplete(0,_message);
