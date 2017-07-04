@@ -10,10 +10,10 @@
  */
 module httpgen.httptansaction;
 
+
 import httpgen.codec.httpcodec;
 import httpgen.httpmessage;
 import httpgen.errocode;
-import collie.socket.tcpsocket;
 
 import std.socket;
 public import std.experimental.logger;
@@ -23,7 +23,7 @@ enum TransportDirection : ubyte {
 	DOWNSTREAM,  // toward the client
 	UPSTREAM     // toward the origin application or data
 }
-
+version(TO_DO):
 interface HTTPTransactionHandler 
 {
 	/**

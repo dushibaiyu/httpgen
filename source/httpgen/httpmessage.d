@@ -173,7 +173,7 @@ final class HTTPMessage
 		return tv;
 	}
 
-	@property bool url(string url){ 
+	@property bool setUrl(string url){ 
         ParserdUrl purl;
         if(httpParserURL(url,purl)){
             if(purl.port > 0)
@@ -441,7 +441,7 @@ protected:
 	{
         String _clientIP;
         String _clientPort;
-		HTTPMethod _method = HTTPMethod.HTTP_INVAILD;
+		HTTPMethod _method = HTTPMethod.INVAILD;
 //        String _path;
 //        String _query;
 //        String _url;

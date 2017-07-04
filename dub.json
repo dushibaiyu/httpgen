@@ -3,15 +3,15 @@
 	"authors": [
 		"dsby"
 	],
-    "sourcePaths":["./source/","/nghttp2/deimos/"],
-	"dependencies": {
-		"yu": {"path":"./yu"},
-		"emsi_containers": {"path" : "./containers"},
-		"openssl" : "~>1.1.4+1.0.1g",
-        "nghttp2" :  {"path" : "./nghttp2"}
-	},
-	"libs": ["nghttp2"],
-	"description": "A minimal D application.",
-	"copyright": "Copyright © 2017, dsby",
-	"license": "proprietary"
+    "sourcePaths":["./source/","./nghttp2/deimos/"],
+    "dependencies": {
+            "yu": {"path":"./yu"},
+            "emsi_containers": {"path" : "./containers"},
+            "openssl" : "~>1.1.4+1.0.1g",
+    "nghttp2" :  {"path" : "./nghttp2"}
+    },
+    "libs": ["nghttp2"],
+    "description": "A minimal D application.",
+    "copyright": "Copyright © 2017, dsby",
+    "license": "proprietary"
 }

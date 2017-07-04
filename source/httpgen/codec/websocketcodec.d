@@ -37,36 +37,24 @@ final class WebsocketCodec : HTTPCodec
 		PS_READ_PAYLOAD
 	}
 
-	this(TransportDirection direc, HTTPTransaction txn)
+	this(TransportDirection direc)
 	{
 		_transportDirection = direc;
-		_transaction = txn;
 	}
 
 	override CodecProtocol getProtocol() {
 		return CodecProtocol.WEBSOCKET;
 	}
-
-	override void onConnectClose()
-	{
-		if(_transaction){
-			_transaction.onErro(HTTPErrorCode.REMOTE_CLOSED);
-			_transaction.handler = null;
-			_transaction.transport = null;
-		}
-	}
 	
 	override void onTimeOut()
 	{
-		if(_transaction){
-			_transaction.onErro(HTTPErrorCode.TIME_OUT);
-		}
+        if(_callback)
+            _callback.onAbort(0,HTTPErrorCode.TIME_OUT);
 	}
 	
-	override void detach(HTTPTransaction txn)
+    override void detach(StreamID id)
 	{
-		if(txn is _transaction)
-			_transaction = null;
+
 	}
 
 	
@@ -99,16 +87,6 @@ final class WebsocketCodec : HTTPCodec
 		readFrame(buf);
 		return buf.length;
 	}
-	
-	override size_t generateHeader(
-		HTTPTransaction txn,
-		HTTPMessage msg,
-		ICodecBuffer buffer,
-		bool eom = false)
-	{
-		return 0;
-	}
-	
 
     override CodecBuffer generateWsFrame(StreamID id,OpCode code,const ubyte[] data,CodecBuffer buffer = null)
 	{
@@ -168,6 +146,7 @@ final class WebsocketCodec : HTTPCodec
 	}
 
 protected:
+    pragma(inline,true)
 	bool doMask(){return _transportDirection ==  TransportDirection.UPSTREAM;}
 
     void getFrameHeader(OpCode code, size_t payloadLength, bool lastFrame, CodecBuffer buffer)
@@ -269,7 +248,7 @@ protected:
 				}
 			}
 			if(_callback)
-				_callback.onWsFrame(_transaction,frame);
+				_callback.onWsFrame(0,frame);
 			clear();
 		}
 		
@@ -463,7 +442,7 @@ private:
 	bool _finished;
 	bool _shouldClose = false;
 	CallBack _callback;
-	HTTPTransaction _transaction;
+	//HTTPTransaction _transaction;
 
 	ProcessingState _state;
 	OpCode _lastcode;

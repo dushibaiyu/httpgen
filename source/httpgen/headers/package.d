@@ -8,8 +8,9 @@ import std.string;
 import std.array;
 import std.experimental.allocator.mallocator;
 
+
 public import httpgen.headers.httpcommonheaders;
-public import httpgen.headers.httpmethod;
+public import yu.tools.http1xparser.default_;
 
 struct HTTPHeaders
 {
@@ -107,7 +108,7 @@ struct HTTPHeaders
 		add(name, value);
 	}
 
-	void set(HTTPHeaderCode code, auto ref STR value)
+    void set(STR)(HTTPHeaderCode code, auto ref STR value)
 	{
 		remove(code);
 		add(code, value);

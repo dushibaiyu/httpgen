@@ -5,7 +5,6 @@ import httpgen.errocode;
 import httpgen.headers;
 import httpgen.httpmessage;
 import httpgen.httptansaction;
-import httpgen.parser;
 import yu.string;
 import yu.container.string;
 import yu.memory.allocator;
@@ -65,6 +64,7 @@ final class HTTP2XCodec : HTTPCodec
     alias HeadersMap = HashMap!(StreamID,HTTPMessage,IAllocator,generateHash!StreamID,false);
     this(TransportDirection direction, uint maxFrmesize = (64 * 1024))
     {
+        _headers = HeadersMap(yuAlloctor);
         _transportDirection = direction;
         _finished = true;
         _maxHeaderSize = maxHeaderSize;
@@ -137,9 +137,11 @@ private:
 
 private:
     CallBack _callback;
-    ScopedRef!nghttp2_session _session;
-    ScopedRef!nghttp2_session_callbacks _sessionCallback;
-    HeadersMap _headers = HeadersMap(yuAlloctor);
+    //ScopedRef!nghttp2_session _session;
+    ScopedRef!void _session;
+    ScopedRef!void _sessionCallback;
+    //ScopedRef!nghttp2_session_callbacks _sessionCallback;
+    HeadersMap _headers;
 }
 
 private :
@@ -253,7 +255,7 @@ int onFrameRecvCallback(nghttp2_session *session, const nghttp2_frame *frame,
 }
 
 int onDataChunkRecvCallback(nghttp2_session *session, ubyte flags,
-    int32_t stream_id, const ubyte *data,
+    int stream_id, const ubyte *data,
     size_t len, void *user_data) {
 //    auto handler = static_cast<http2_handler *>(user_data);
 //    auto strm = handler.find_stream(stream_id);
@@ -267,8 +269,8 @@ int onDataChunkRecvCallback(nghttp2_session *session, ubyte flags,
     return 0;
 }
 
-int onStreamCloseCallback(nghttp2_session *session, int32_t stream_id,
-    uint32_t error_code, void *user_data) {
+int onStreamCloseCallback(nghttp2_session *session, int stream_id,
+    uint error_code, void *user_data) {
 //    auto handler = static_cast<http2_handler *>(user_data);
 //    
 //    auto strm = handler.find_stream(stream_id);

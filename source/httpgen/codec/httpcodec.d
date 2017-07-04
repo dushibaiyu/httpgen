@@ -156,7 +156,7 @@ abstract class HTTPCodec
 		void onAbort(StreamID id,
 			HTTPErrorCode code);
 
-		void onWsFrame(HTTPTransaction ,ref WSFrame);
+        void onWsFrame(StreamID id ,ref WSFrame);
 		/**
      * Called upon receipt of a frame header.
      * @param stream_id The stream ID

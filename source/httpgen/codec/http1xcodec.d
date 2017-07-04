@@ -15,7 +15,6 @@ import httpgen.errocode;
 import httpgen.headers;
 import httpgen.httpmessage;
 import httpgen.httptansaction;
-import httpgen.parser;
 import yu.string;
 import yu.container.string;
 import yu.tools.http1xparser;
@@ -80,7 +79,13 @@ final class HTTP1XCodec : HTTPCodec
 		_parser.onMessageComplete(&onMessageComplete);
 	}
 
-	override CodecProtocol getProtocol() {
+    ~this(){
+        if(_message is null) return;
+        yDel(_message);
+        _message = null;
+    }
+
+    override CodecProtocol getProtocol() {
 		return CodecProtocol.HTTP_1_X;
 	}
 
@@ -129,7 +134,7 @@ final class HTTP1XCodec : HTTPCodec
 	{
 	}
 
-    CodecBuffer generateHeader(
+    override CodecBuffer generateHeader(
         StreamID id,
         HTTPMessage msg,
         StreamID assocStream = 0,
@@ -138,9 +143,8 @@ final class HTTP1XCodec : HTTPCodec
         HTTP1XCodecBuffer buffer  = yNew!HTTP1XCodecBuffer();
         scope(failure) yDel(buffer);
 
-		const bool upstream = (_transportDirection == TransportDirection.UPSTREAM);
-		const size_t beforLen = buffer.length;
-		auto hversion = msg.getHTTPVersion();
+        immutable upstream = (_transportDirection == TransportDirection.UPSTREAM);
+		immutable hversion = msg.getHTTPVersion();
 		_egressChunked = msg.chunked && !_egressUpgrade;
 		_lastChunkWritten = false;
 		bool hasTransferEncodingChunked = false;
@@ -160,11 +164,11 @@ final class HTTP1XCodec : HTTPCodec
 			ingorebody = responseBodyMustBeEmpty(code);
 			appendLiteral(buffer,to!string(code));
 			appendLiteral(buffer," ");
-			appendLiteral(buffer,msg.statusMessage);
+			appendLiteral(buffer,msg.statusMessage.stdString);
 		} else {
 			appendLiteral(buffer,msg.methodString);
 			appendLiteral(buffer," ");
-			appendLiteral(buffer,msg.getPath);
+            appendLiteral(buffer,msg.getPath.stdString);
 			appendLiteral(buffer," HTTP/");
 			appendLiteral(buffer,to!string(hversion.maj));
 			appendLiteral(buffer,".");
@@ -173,15 +177,16 @@ final class HTTP1XCodec : HTTPCodec
 		}
 		appendLiteral(buffer,"\r\n");
 		_egressChunked &= _mayChunkEgress;
-		string contLen;
-		string upgradeHeader;
-		foreach(HTTPHeaderCode code,string key,string value; msg.getHeaders)
+		String contLen;
+		String upgradeHeader;
+		foreach(HTTPHeaderCode code,ref key,ref value; msg.getHeaders)
 		{
+            string v = value.stdString;
 			if(code == HTTPHeaderCode.CONTENT_LENGTH){
 				contLen = value;
 				continue;
 			} else if (code ==  HTTPHeaderCode.CONNECTION) {
-				if(isSameIngnoreLowUp(value,"close")) {
+				if(isSameIngnoreLowUp(v,"close")) {
 					_keepalive = false;
 				}
 				continue;
@@ -190,21 +195,21 @@ final class HTTP1XCodec : HTTPCodec
 				hasUpgradeHeader = true;
 			}  else if (!hasTransferEncodingChunked &&
 				code == HTTPHeaderCode.TRANSFER_ENCODING) {
-				if(!isSameIngnoreLowUp(value,"chunked")) 
+                if(!isSameIngnoreLowUp(v,"chunked")) 
 					continue;
 				hasTransferEncodingChunked = true;
 				if(!_mayChunkEgress) 
 					continue;
 			} 
-			appendLiteral(buffer,key);
+			appendLiteral(buffer,key.stdString);
 			appendLiteral(buffer,": ");
-			appendLiteral(buffer,value);
+			appendLiteral(buffer,v);
 			appendLiteral(buffer,"\r\n");
 		}
 		_inChunk = false;
 		bool bodyCheck = ((!upstream) && _keepalive && !ingorebody  && !_egressUpgrade) ||
 				// auto chunk POSTs and any request that came to us chunked
-				(upstream && ((msg.method == HTTPMethod.HTTP_POST) || _egressChunked));
+				(upstream && ((msg.method == HTTPMethod.POST) || _egressChunked));
 		// TODO: 400 a 1.0 POST with no content-length
 		// clear egressChunked_ if the header wasn't actually set
 		_egressChunked &= hasTransferEncodingChunked;
@@ -229,7 +234,7 @@ final class HTTP1XCodec : HTTPCodec
 		appendLiteral(buffer,"Server: Collie\r\n");
 		if(contLen.length > 0){
 			appendLiteral(buffer,"Content-Length: ");
-			appendLiteral(buffer,contLen);
+			appendLiteral(buffer,contLen.stdString);
 			appendLiteral(buffer,"\r\n");
 		}
 
@@ -284,7 +289,7 @@ final class HTTP1XCodec : HTTPCodec
 		return buffer;
 	}
 
-    override generateEOM(StreamID id,CodecBuffer buffer = null)
+    override CodecBuffer generateEOM(StreamID id,CodecBuffer buffer = null)
 	{
 		size_t rlen = 0;
 		if(_egressChunked) {
@@ -314,12 +319,16 @@ final class HTTP1XCodec : HTTPCodec
 	}
 
 protected:
+    final void appendLiteral(CodecBuffer buffer, const char[] data)
+    {
+        buffer.put(cast(ubyte[])data);
+    }
 
-    final void appendLiteral(T)(HTTP1XCodecBuffer buffer, T[] data) if(isSomeChar!(Unqual!T) || is(Unqual!T == byte) || is(Unqual!T == ubyte))
-	{
-		buffer.put(cast(ubyte[])data);
-	}
-
+    final void appendLiteral(CodecBuffer buffer, const ubyte[] data) //if(isSomeChar!(Unqual!T) || is(Unqual!T == byte) || is(Unqual!T == ubyte))
+    {
+        buffer.put(cast(ubyte[])data);
+    }
+    
 	void onMessageBegin(ref HTTP1xParser){
 		_finished = false;
 		_headersComplete = false;
@@ -337,8 +346,8 @@ protected:
 		}
 		if(_callback)
 			_callback.onMessageBegin(0, _message);
-		_currtKey.clear();
-		_currtValue.clear();
+		_currtKey = String();
+        _currtValue = String();
 	}
 	
 	void onHeadersComplete(ref HTTP1xParser parser){
@@ -361,10 +370,10 @@ protected:
 		_message.wantsKeepAlive(_keepalive);
 		_headersComplete = true;
 		if(_message.upgraded){
-			string upstring  = _message.getHeaders.getSingleOrEmpty(HTTPHeaderCode.UPGRADE);
-			CodecProtocol pro = getProtocolFormString(upstring);
+			auto upstring  = _message.getHeaders.getSingleOrEmpty(HTTPHeaderCode.UPGRADE);
+			CodecProtocol pro = getProtocolFormString(upstring.stdString);
 			if(_callback)
-				_callback.onNativeProtocolUpgrade(0,pro,upstring,_message);
+                _callback.onNativeProtocolUpgrade(0,pro,upstring.stdString,_message);
 		} else {
 			if(_callback)
 				_callback.onHeadersComplete(0,_message);
@@ -404,46 +413,40 @@ protected:
 	void onUrl(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
 		//trace("on Url");
-		_message.method = parser.methodCode();
-		_connectRequest = (parser.methodCode() == HTTPMethod.HTTP_CONNECT);
+		_message.method = parser.method();
+		_connectRequest = (parser.method() == HTTPMethod.CONNECT);
 		
 		// If this is a headers-only request, we shouldn't send
 		// an entity-body in the response.
-		_headRequest = (parser.methodCode() == HTTPMethod.HTTP_HEAD);
+		_headRequest = (parser.method() == HTTPMethod.HEAD);
 
-		_currtKey.insertBack(data);
+        _currtKey ~= cast(string)data;
 		if(finish) {
-			ubyte[] tdata = _currtKey.data(true);
-			_message.url = cast(string)tdata;
+            _message.setUrl(_currtKey.stdString);
 		}
 	}
 	
 	void onStatus(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
 
-		_currtKey.insertBack(data);
+        _currtKey ~= cast(string)data;
 		if(finish) {
-			string sdata = cast(string)_currtKey.data(true);
-			_message.statusCode(cast(ushort)parser.statusCode);
-			_message.statusMessage(sdata);
+            _message.statusCode(cast(ushort)parser.statusCode);
+            _message.statusMessage(_currtKey);
 		}
 	}
 	
 	void onHeaderField(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
-		//trace("on onHeaderField");
-		_currtKey.insertBack(data);
+        _currtKey ~= cast(string)data;
 	}
 	
 	void onHeaderValue(ref HTTP1xParser parser, ubyte[] data, bool finish)
 	{
-	//	trace("on onHeaderField");
-		_currtValue.insertBack(data);
+        _currtValue  ~= cast(string)data;
 		if(finish){
-			string key = cast(string)_currtKey.data(true);
-			string value = cast(string)_currtValue.data(true);
-			trace("http header: \t", key, " : ", value);
-			_message.getHeaders.add(key,value);
+            trace("http header: \t", _currtKey.stdString, " : ", _currtValue.stdString);
+            _message.getHeaders.add(_currtKey,_currtValue);
 		}
 	}
 	
