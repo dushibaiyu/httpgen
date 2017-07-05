@@ -23,42 +23,6 @@ import std.array;
 import std.conv;
 import std.traits;
 
-final class HTTP1XCodecBuffer : CodecBuffer
-{
-    import yu.container.vector;
-    import yu.exception;
-    import std.experimental.allocator.mallocator;
-
-    alias BufferData = Vector!(ubyte, Mallocator,false);
-
-    override ubyte[] data() nothrow {
-        auto dt = _data.data();
-        return cast(ubyte[])dt[sended..$];
-    }
-
-    override void doFinish() nothrow {
-        auto ptr = this;
-        yuCathException(yDel(ptr));
-    }
-
-    override bool popSize(size_t size) nothrow {
-        sended += size;
-        if(sended >= _data.length)
-            return true;
-        else
-            return false;
-    }
-
-    override void put(ubyte[] data)
-    {
-        _data.put(data);
-    }
-
-private:
-    BufferData _data;
-    uint sended = 0;
-}
-
 final class HTTP1XCodec : HTTPCodec
 {
 	this(TransportDirection direction, uint maxHeaderSize = (64 * 1024))
@@ -134,13 +98,13 @@ final class HTTP1XCodec : HTTPCodec
 	{
 	}
 
-    override CodecBuffer generateHeader(
+    override HTTPCodecBuffer generateHeader(
         StreamID id,
         scope HTTPMessage msg,
         StreamID assocStream = 0,
         bool eom = false)
 	{
-        HTTP1XCodecBuffer buffer  = yNew!HTTP1XCodecBuffer();
+        HTTPCodecBuffer buffer  = yNew!HTTPCodecBuffer();
         scope(failure) yDel(buffer);
 
         immutable upstream = (_transportDirection == TransportDirection.UPSTREAM);
@@ -242,8 +206,8 @@ final class HTTP1XCodec : HTTPCodec
 		return buffer;
 	}
 
-    override CodecBuffer generateBody(StreamID id,
-        in ubyte[] data,CodecBuffer buffer,
+    override HTTPCodecBuffer generateBody(StreamID id,
+        in ubyte[] data,HTTPCodecBuffer buffer,
         bool eom)
 	{
         mixin(CheckBuffer);
@@ -257,9 +221,9 @@ final class HTTP1XCodec : HTTPCodec
         return buffer;
 	}
 
-    override CodecBuffer generateChunkHeader(
+    override HTTPCodecBuffer generateChunkHeader(
         StreamID id,
-        size_t length,CodecBuffer buffer = null)
+        size_t length,HTTPCodecBuffer buffer = null)
 	{
 		trace("_egressChunked  ", _egressChunked);
 		if (_egressChunked){
@@ -277,8 +241,8 @@ final class HTTP1XCodec : HTTPCodec
 	}
 
 
-    override CodecBuffer generateChunkTerminator(
-        StreamID id,CodecBuffer buffer = null)
+    override HTTPCodecBuffer generateChunkTerminator(
+        StreamID id,HTTPCodecBuffer buffer = null)
 	{
 		if(_egressChunked && _inChunk)
 		{
@@ -289,7 +253,7 @@ final class HTTP1XCodec : HTTPCodec
 		return buffer;
 	}
 
-    override CodecBuffer generateEOM(StreamID id,CodecBuffer buffer = null)
+    override HTTPCodecBuffer generateEOM(StreamID id,HTTPCodecBuffer buffer = null)
 	{
 		size_t rlen = 0;
 		if(_egressChunked) {
@@ -319,12 +283,12 @@ final class HTTP1XCodec : HTTPCodec
 	}
 
 protected:
-    final void appendLiteral(CodecBuffer buffer, const char[] data)
+    final void appendLiteral(HTTPCodecBuffer buffer, const char[] data)
     {
         buffer.put(cast(ubyte[])data);
     }
 
-    final void appendLiteral(CodecBuffer buffer, const ubyte[] data) //if(isSomeChar!(Unqual!T) || is(Unqual!T == byte) || is(Unqual!T == ubyte))
+    final void appendLiteral(HTTPCodecBuffer buffer, const ubyte[] data) //if(isSomeChar!(Unqual!T) || is(Unqual!T == byte) || is(Unqual!T == ubyte))
     {
         buffer.put(cast(ubyte[])data);
     }
@@ -494,10 +458,3 @@ private:
 	bool _nativeUpgrade = false;
 	bool _headersComplete = false;
 }
-
-package:
-enum string CheckBuffer = q{
-    if(buffer is null)
-        buffer  = yNew!HTTP1XCodecBuffer();
-    scope(failure) yDel(buffer);
-};

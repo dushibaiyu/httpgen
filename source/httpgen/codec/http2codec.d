@@ -23,50 +23,17 @@ class Http2CodecEcxeption : Exception
     mixin basicExceptionCtors;
 }
 
-final class HTTP2CodecBuffer : CodecBuffer
-{
-    import yu.container.vector;
-    import yu.exception;
-    import std.experimental.allocator.mallocator;
-    
-    alias BufferData = Vector!(ubyte, Mallocator,false);
-    
-    override ubyte[] data() nothrow {
-        auto dt = _data.data();
-        return cast(ubyte[])dt[sended..$];
-    }
-    
-    override void doFinish() nothrow {
-        auto ptr = this;
-        yuCathException(yDel(ptr));
-    }
-    
-    override bool popSize(size_t size) nothrow {
-        sended += size;
-        if(sended >= _data.length)
-            return true;
-        else
-            return false;
-    }
-    
-    override void put(ubyte[] data)
-    {
-        _data.put(data);
-    }
-    
-private:
-    BufferData _data;
-    uint sended = 0;
-}
-
 final class HTTP2XCodec : HTTPCodec
 { 
     alias HeadersMap = HashMap!(StreamID,HTTPMessage,IAllocator,generateHash!StreamID,false);
-    this(TransportDirection direction, uint maxFrmesize = (64 * 1024))
+    alias SendBuffer = void delegate(HTTPCodecBuffer);
+
+    this(TransportDirection direction,SendBuffer send, uint maxFrmesize = (64 * 1024))
     {
         _headers = HeadersMap(yuAlloctor);
         _transportDirection = direction;
         _finished = true;
+        _sendFun = send;
         _session.resetDeleter(&freeSession);
         _sessionCallback.resetDeleter(&freeCallBack);
         initSession();
@@ -103,6 +70,7 @@ private:
         int rv = nghttp2_session_callbacks_new(&callbacks);
         enforce!Http2CodecEcxeption((rv == 0), "nghttp2 create callback error! ");
         _sessionCallback.reset(callbacks);
+        nghttp2_session_callbacks_set_send_callback(callbacks, &send_callback);
         nghttp2_session_callbacks_set_on_begin_headers_callback(
             callbacks, &onBeginHeadersCallback);
         nghttp2_session_callbacks_set_on_header_callback(callbacks,
@@ -147,7 +115,7 @@ private:
     //ScopedRef!nghttp2_session_callbacks _sessionCallback;
     HeadersMap _headers;
     TransportDirection _transportDirection;
-  
+    SendBuffer _sendFun;
     bool _finished;
 }
 
@@ -227,7 +195,7 @@ int onHeaderCallback(nghttp2_session *session, const(nghttp2_frame) *frame, cons
 
 int onFrameRecvCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
     void *user_data) {
-    auto handler = cast(HTTP2CodecBuffer)(user_data);
+    auto handler = cast(HTTP2XCodec)(user_data);
 //
 //    auto strm = handler.find_stream(frame.hd.stream_id);
 //    
@@ -326,4 +294,15 @@ int onFrameNotSendCallback(nghttp2_session *session,
 //        NGHTTP2_INTERNAL_ERROR);
     
     return 0;
+}
+
+ssize_t send_callback(nghttp2_session *session, const (ubyte) *data,
+    size_t length, int flags, void *user_data) {
+    auto handler = cast(HTTP2XCodec)(user_data);
+    if(length > 0 && handler._sendFun){
+        HTTPCodecBuffer buffer = yNew!HTTPCodecBuffer();
+        buffer.put(data[0..length]);
+    }
+    //TODO: send
+    return cast(ssize_t)length;
 }

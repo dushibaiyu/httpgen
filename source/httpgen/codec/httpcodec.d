@@ -27,10 +27,14 @@ enum CodecProtocol : ubyte {
 	HTTP_2 = 3
 };
 
-
-
-abstract class CodecBuffer : TCPWriteBuffer
+final class HTTPCodecBuffer : TCPWriteBuffer
 {
+    import yu.container.vector;
+    import yu.exception;
+    import yu.memory.allocator;
+    import std.experimental.allocator.mallocator;
+    
+    alias BufferData = Vector!(ubyte, Mallocator,false);
     alias SharedCallback =  ISharedRef!(IAllocator, HTTPCodec.CallBack,true);
 
     final setCallback(SharedCallback cback)
@@ -38,12 +42,33 @@ abstract class CodecBuffer : TCPWriteBuffer
         _cback.swap(cback);
     }
 
-    override void doFinish() nothrow {
-         yuCathException(_cback.clear());
+    override ubyte[] data() nothrow {
+        auto dt = _data.data();
+        return cast(ubyte[])dt[sended..$];
     }
-
-    void put(ubyte[] data);
-
+    
+    override void doFinish() nothrow {
+        auto ptr = this;
+        yuCathException(_cback.clear());
+        yuCathException(yDel(ptr));
+    }
+    
+    override bool popSize(size_t size) nothrow {
+        sended += size;
+        if(sended >= _data.length)
+            return true;
+        else
+            return false;
+    }
+    
+    void put(in ubyte[] data)
+    {
+        _data.put(data);
+    }
+    
+private:
+    BufferData _data;
+    uint sended = 0;
 private:
     SharedCallback _cback; //  session 引用技术，防止提前释放
 }
@@ -362,7 +387,7 @@ abstract class HTTPCodec
    *              and the size of the uncompressed data.
    * @return None
    */
-    CodecBuffer generateHeader(
+    HTTPCodecBuffer generateHeader(
 		StreamID id,
 		scope HTTPMessage msg,
         StreamID assocStream = 0,
@@ -382,8 +407,8 @@ abstract class HTTPCodec
    *
    * @return number of bytes written
    */
-    CodecBuffer generateBody(StreamID id,
-        in ubyte[] data,CodecBuffer buffer,
+    HTTPCodecBuffer generateBody(StreamID id,
+        in ubyte[] data,HTTPCodecBuffer buffer,
         bool eom){
         return null;
     }
@@ -391,17 +416,17 @@ abstract class HTTPCodec
 	/**
    * Write a body chunk header, if relevant.
    */
-    CodecBuffer generateChunkHeader(
+    HTTPCodecBuffer generateChunkHeader(
 		StreamID id,
-        size_t length,CodecBuffer buffer = null){
+        size_t length,HTTPCodecBuffer buffer = null){
         return null;
     }
 	
 	/**
    * Write a body chunk terminator, if relevant.
    */
-    CodecBuffer generateChunkTerminator(
-        StreamID id,CodecBuffer buffer = null){
+    HTTPCodecBuffer generateChunkTerminator(
+        StreamID id,HTTPCodecBuffer buffer = null){
         return null;
     }
 
@@ -411,7 +436,7 @@ abstract class HTTPCodec
    *
    * @return number of bytes written
    */
-    CodecBuffer generateEOM(StreamID id,CodecBuffer buffer = null){
+    HTTPCodecBuffer generateEOM(StreamID id,HTTPCodecBuffer buffer = null){
         return null;
     }
 	
@@ -419,12 +444,12 @@ abstract class HTTPCodec
    * Generate any protocol framing needed to abort a connection.
    * @return number of bytes written
    */
-    CodecBuffer generateRstStream(StreamID id,HTTPErrorCode code,CodecBuffer buffer = null){
+    HTTPCodecBuffer generateRstStream(StreamID id,HTTPErrorCode code,HTTPCodecBuffer buffer = null){
         return null;
     }
 
 
-    CodecBuffer generateWsFrame(StreamID id,OpCode code,in ubyte[] data,CodecBuffer buffer = null)
+    HTTPCodecBuffer generateWsFrame(StreamID id,OpCode code,in ubyte[] data,HTTPCodecBuffer buffer = null)
 	{
 		return null;
 	}
@@ -441,3 +466,9 @@ abstract class HTTPCodec
 	}
 }
 
+package:
+enum string CheckBuffer = q{
+    if(buffer is null)
+        buffer  = yNew!HTTPCodecBuffer();
+    scope(failure) yDel(buffer);
+};

@@ -18,7 +18,6 @@ import httpgen.httpmessage;
 import httpgen.errocode;
 import std.conv;
 import yu.memory.allocator;
-import httpgen.codec.http1xcodec : HTTP1XCodecBuffer, CheckBuffer;
 
 enum FRAME_SIZE_IN_BYTES = 512 * 512 * 2; //maximum size of a frame when sending a message
 
@@ -89,7 +88,7 @@ final class WebsocketCodec : HTTPCodec
 		return buf.length;
 	}
 
-    override CodecBuffer generateWsFrame(StreamID id,OpCode code,in ubyte[] dt,CodecBuffer buffer = null)
+    override HTTPCodecBuffer generateWsFrame(StreamID id,OpCode code,in ubyte[] dt,HTTPCodecBuffer buffer = null)
 	{
         mixin(CheckBuffer);
         ubyte[] data = cast(ubyte[])dt;
@@ -151,7 +150,7 @@ protected:
     pragma(inline,true)
 	bool doMask(){return _transportDirection ==  TransportDirection.UPSTREAM;}
 
-    void getFrameHeader(OpCode code, size_t payloadLength, bool lastFrame, CodecBuffer buffer)
+    void getFrameHeader(OpCode code, size_t payloadLength, bool lastFrame, HTTPCodecBuffer buffer)
 	{
 		ubyte[2] wdata = [0, 0];
 		wdata[0] = cast(ubyte)((code & 0x0F) | (lastFrame ? 0x80 : 0x00));
