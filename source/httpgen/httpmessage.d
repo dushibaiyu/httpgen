@@ -96,12 +96,13 @@ final class HTTPMessage
    * Set/Get client address
    */
 	@property void clientAddress(Address addr) {
-		clientIP = addr.toAddrString();
+		auto clientIP = addr.toAddrString();
         request._clientIP = clientIP;
         auto port = addr.toPortString;
         request._clientPort = port;
         import yu.memory.gc;
-        gcFree(clientIP); gcFree(port);
+        gcFree(cast(void[])clientIP); 
+        gcFree(cast(void[])port);
 	}
 	
 
@@ -122,7 +123,8 @@ final class HTTPMessage
 		auto dstPort = addr.toPortString;
         _dstPort = dstPort;
         import yu.memory.gc;
-        gcFree(dstIP); gcFree(dstPort);
+        gcFree(cast(void[])dstIP); 
+        gcFree(cast(void[])dstPort);
 	}
 	
 
@@ -205,7 +207,7 @@ final class HTTPMessage
    */
     String getPath()
 	{
-		return request._path;
+		return _url.path;
 	}
 	
 	/**
@@ -213,7 +215,7 @@ final class HTTPMessage
    */
 	String getQueryString()
 	{
-		return request._query;
+        return _url.query;
 	}
 
 	@property void statusMessage(STR)(auto ref STR msg) {
@@ -229,12 +231,12 @@ final class HTTPMessage
    */
 	@property void statusCode(ushort status)
 	{
-		response()._status = status;
+		response._status = status;
 	}
 
 	@property ushort statusCode()
 	{
-		return response()._status;
+		return response._status;
 	}
 
 	/**
@@ -250,12 +252,12 @@ final class HTTPMessage
 	int processMaxForwards()
 	{
 		auto m = method();
-		if (m == HTTPMethod.HTTP_TRACE || m  == HTTPMethod.HTTP_OPTIONS) {
-			string value = _headers.getSingleOrEmpty(HTTPHeaderCode.MAX_FORWARDS);
+		if (m == HTTPMethod.TRACE || m  == HTTPMethod.OPTIONS) {
+			String value = _headers.getSingleOrEmpty(HTTPHeaderCode.MAX_FORWARDS);
 			if (value.length > 0) {
 				long max_forwards = -1;
 
-				collectException(to!long(value),max_forwards);
+				collectException(to!long(value.stdString),max_forwards);
 
 				if (max_forwards < 0) {
 					return 400;
@@ -378,17 +380,17 @@ final class HTTPMessage
    */
 	auto queryParam(){
         parseQueryParams();
-        return _queryParams;
+        return &_queryParams;
     }
 
 	/**
    * Set the query string to the specified value, and recreate the url_.
    *
    */
-	void setQueryString(string query)
+	void setQueryString(STR)(auto ref STR query)
 	{
 		unparseQueryParams();
-		request._query = query;
+		_url.query = query;
 	}
 	/**
    * Remove the query parameter with the specified name.
@@ -461,7 +463,7 @@ protected:
 		import yu.string;
 		if(_parsedQueryParams) return;
 		_parsedQueryParams = true;
-        string query = request._query.stdString;
+        string query = _url.query.stdString;
 		if(query.length == 0) return;
 		splitNameValue(query, '&', '=',(string name,string value){
 				name = strip(name);

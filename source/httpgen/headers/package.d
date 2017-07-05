@@ -15,6 +15,7 @@ public import yu.tools.http1xparser.default_;
 struct HTTPHeaders
 {
 	alias StringArray = Vector!(String,Mallocator,false);
+    alias CodeArray = Vector!(HTTPHeaderCode,Mallocator,false);
 	enum kInitialVectorReserve = 32;
 	
 	/**
@@ -23,7 +24,7 @@ struct HTTPHeaders
 	*/
 	bool remove(ref String name)
 	{
-		remove(name.stdString());
+		return remove(name.stdString());
 	}
 
 	bool remove(string name){
@@ -33,7 +34,7 @@ struct HTTPHeaders
 		bool removed = false;
 		foreach(size_t i, ref String str; _headersNames){
 			if(_codes[i] != HTTPHeaderCode.OTHER) continue;
-			if(isSameIngnoreLowUp(name,_headersNames[i])){
+			if(isSameIngnoreLowUp(name,_headersNames[i].stdString)){
 				_codes[i] = HTTPHeaderCode.NONE;
 				_headersNames[i] = String();
 				_headerValues[i] = String();
@@ -54,7 +55,7 @@ struct HTTPHeaders
 			ptr = cast(HTTPHeaderCode *)memchr(ptr,code,tlen);
 			if(ptr is null)
 				break;
-			tlen = ptr - codes.ptr;
+			tlen = ptr - _codes.ptr;
 			ptr ++;
 			_codes[tlen] = HTTPHeaderCode.NONE;
 			_headersNames[tlen] = String();
@@ -116,7 +117,7 @@ struct HTTPHeaders
 
 	bool exists(ref String name)
 	{
-		exists(name.stdString);
+		return exists(name.stdString);
 	}
 
 	bool exists(string name)
@@ -146,7 +147,7 @@ struct HTTPHeaders
 		_deletedCount = 0;
 	}
 
-	int opApply(scope int delegate(ref String name,ref String value) opeartions)
+	int opApply(scope int delegate(String name,String value) opeartions)
 	{
 		int result = 0;
 		foreach(size_t i, ref String str; _headersNames){
@@ -158,7 +159,7 @@ struct HTTPHeaders
 		return result;
 	}
 
-	int opApply(scope int delegate(HTTPHeaderCode code,ref String name,ref String value) opeartions)
+	int opApply(scope int delegate(HTTPHeaderCode code,String name,String value) opeartions)
 	{
 		int result = 0;
 		foreach(size_t i, ref String str; _headersNames){
@@ -179,7 +180,7 @@ struct HTTPHeaders
 
 	void copyTo(ref HTTPHeaders header)
 	{
-		foreach(code,ref name,ref value; this)
+		foreach(code,name,value; this)
 		{
 			if(code == HTTPHeaderCode.NONE) continue;
 			if(code == HTTPHeaderCode.OTHER)
@@ -201,7 +202,7 @@ struct HTTPHeaders
 	{
 		String str = String();
 		bool frist = true;
-		foreach(code,ref name,ref value; this)
+		foreach(code,name,value; this)
 		{
 			if(code == HTTPHeaderCode.NONE) continue;
 			if(frist) {
@@ -233,12 +234,11 @@ struct HTTPHeaders
 	size_t getNumberOfValues(HTTPHeaderCode code)
 	{
 		size_t index = 0;
-		HTTPHeaderCode[] codes = _codes.data(false);
-		HTTPHeaderCode * ptr = codes.ptr;
-		const size_t len = codes.length;
+        auto ptr = _codes.ptr;
+        const size_t len = _codes.length;
 		while(true)
 		{
-			size_t tlen = len - (ptr - codes.ptr);
+            size_t tlen = len - (ptr - _codes.ptr);
 			ptr = cast(HTTPHeaderCode *)memchr(ptr,code,tlen);
 			if(ptr is null)
 				break;
@@ -264,7 +264,7 @@ struct HTTPHeaders
 	String getSingleOrEmpty(HTTPHeaderCode code)  {
 		HTTPHeaderCode * ptr = cast(HTTPHeaderCode *)memchr(_codes.ptr,code,_codes.length);
 		if(ptr !is null){
-			size_t index = ptr - codes.ptr;
+            size_t index = ptr - _codes.ptr;
 			return _headerValues[index];
 		}
 		return String();
@@ -282,10 +282,10 @@ struct HTTPHeaders
    * This method returns true if processing was stopped (by func returning
    * true), and false otherwise.
    */
-	alias LAMBDA = bool delegate(ref String value);
+	alias LAMBDA = bool delegate(String value);
 	bool forEachValueOfHeader(ref String name, scope LAMBDA func)
 	{
-		forEachValueOfHeader(name.stdString,func);
+		return forEachValueOfHeader(name.stdString,func);
 	}
 
 	bool forEachValueOfHeader(string name,scope LAMBDA func)
@@ -315,7 +315,7 @@ struct HTTPHeaders
 			ptr = cast(HTTPHeaderCode *)memchr(ptr,code,tlen);
 			if(ptr is null)
 				break;
-			tlen = ptr - codes.ptr;
+            tlen = ptr - _codes.ptr;
 			ptr ++;
 			if(func(_headerValues[tlen]))
 				return true;
@@ -323,7 +323,7 @@ struct HTTPHeaders
 		return false;
 	}
 private :
-	Vector!(HTTPHeaderCode) _codes ;// = Vector!(HTTPHeaderCode)(2);
+    CodeArray _codes ;// = Vector!(HTTPHeaderCode)(2);
 	StringArray _headersNames ;
 	StringArray _headerValues ;
 	size_t _deletedCount = 0;

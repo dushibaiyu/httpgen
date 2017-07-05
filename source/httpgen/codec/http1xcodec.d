@@ -179,7 +179,7 @@ final class HTTP1XCodec : HTTPCodec
 		_egressChunked &= _mayChunkEgress;
 		String contLen;
 		String upgradeHeader;
-		foreach(HTTPHeaderCode code,ref key,ref value; msg.getHeaders)
+		foreach(HTTPHeaderCode code,key,value; msg.getHeaders)
 		{
             string v = value.stdString;
 			if(code == HTTPHeaderCode.CONTENT_LENGTH){

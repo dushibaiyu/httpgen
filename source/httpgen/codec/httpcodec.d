@@ -24,9 +24,6 @@ enum CodecProtocol : ubyte {
 	init = 0,
 	HTTP_1_X = 1,
 	WEBSOCKET = 2,
-//	SPDY_3,
-//	SPDY_3_1,
-//	SPDY_3_1_HPACK,
 	HTTP_2 = 3
 };
 

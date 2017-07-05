@@ -17,6 +17,7 @@ import httpgen.codec.wsframe;
 import httpgen.httpmessage;
 import httpgen.errocode;
 import std.conv;
+import yu.memory.allocator;
 import httpgen.codec.http1xcodec : HTTP1XCodecBuffer, CheckBuffer;
 
 enum FRAME_SIZE_IN_BYTES = 512 * 512 * 2; //maximum size of a frame when sending a message
@@ -88,9 +89,10 @@ final class WebsocketCodec : HTTPCodec
 		return buf.length;
 	}
 
-    override CodecBuffer generateWsFrame(StreamID id,OpCode code,in ubyte[] data,CodecBuffer buffer = null)
+    override CodecBuffer generateWsFrame(StreamID id,OpCode code,in ubyte[] dt,CodecBuffer buffer = null)
 	{
         mixin(CheckBuffer);
+        ubyte[] data = cast(ubyte[])dt;
 		if((code & 0x08) == 0x08 && (data.length > 125))
 				data = data[0 .. 125];
 		if(code == OpCode.OpCodeClose)
@@ -114,14 +116,14 @@ final class WebsocketCodec : HTTPCodec
 			
 			const size_t payloadLength = bytesLeft < FRAME_SIZE_IN_BYTES ? bytesLeft
 				: FRAME_SIZE_IN_BYTES;
-			
+            ubyte[] send = data[bytesWritten .. (bytesWritten + payloadLength)];
 			getFrameHeader(opcode, payloadLength, isLastFrame, buffer);
 			if (doMask())
 			{
 				ubyte[4] mask = generateMaskingKey(); 
 				buffer.put(mask[]);
-				buffer.put(data);
-				auto tdata = buffer.data(false);
+                buffer.put(send);
+				auto tdata = buffer.data();
 				for (size_t j = tdata.length - payloadLength; j < tdata.length; i++)
 				{
 					tdata[j] ^= mask[j % 4];
@@ -129,7 +131,7 @@ final class WebsocketCodec : HTTPCodec
 			}
 			else
 			{
-				buffer.put(data);
+                buffer.put(send);
 			}
 			bytesLeft -= payloadLength;
 			bytesWritten += payloadLength;
