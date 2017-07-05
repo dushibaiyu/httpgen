@@ -67,16 +67,15 @@ final class HTTP2XCodec : HTTPCodec
         _headers = HeadersMap(yuAlloctor);
         _transportDirection = direction;
         _finished = true;
-        _maxHeaderSize = maxHeaderSize;
         _session.resetDeleter(&freeSession);
         _sessionCallback.resetDeleter(&freeCallBack);
         initSession();
         nghttp2_settings_entry ent;
-        ent.settings_id = nghttp2_settings_id; ent.value  = 100; // set max 100
-        nghttp2_submit_settings(_session.data(), nghttp2_flag.NGHTTP2_FLAG_NONE, &ent, 1);
+        ent.settings_id = nghttp2_settings_id.NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS; ent.value  = 100; // set max 100
+        nghttp2_submit_settings(http2session(), nghttp2_flag.NGHTTP2_FLAG_NONE, &ent, 1);
         ent.settings_id = nghttp2_settings_id.NGHTTP2_SETTINGS_MAX_FRAME_SIZE;
         ent.value = maxFrmesize;
-        nghttp2_submit_settings(_session.data(), nghttp2_flag.NGHTTP2_FLAG_NONE, &ent, 1);
+        nghttp2_submit_settings(http2session(), nghttp2_flag.NGHTTP2_FLAG_NONE, &ent, 1);
     }
 
     ~this(){
@@ -127,12 +126,17 @@ private:
         _session.reset(session);
     }
 
+    nghttp2_session * http2session(){
+        if(_session.isNull) return null;
+        return cast(nghttp2_session *)_session.data();
+    }
+
     void newStream(StreamID id)
     {
         HTTPMessage msg = yNew!HTTPMessage();
         _headers[id] = msg;
         if(_callback)
-            _callback.onMessageBegin(id, _message);
+            _callback.onMessageBegin(id, msg);
     }
 
 private:
@@ -142,34 +146,39 @@ private:
     ScopedRef!void _sessionCallback;
     //ScopedRef!nghttp2_session_callbacks _sessionCallback;
     HeadersMap _headers;
+    TransportDirection _transportDirection;
+  
+    bool _finished;
 }
 
 private :
-void freeSession(ref typeof(SmartGCAllocator.instance) , nghttp2_session * session)
+void freeSession(ref typeof(SmartGCAllocator.instance) , void * session)//nghttp2_session * session)
 {
-    nghttp2_session_del(session);
+    nghttp2_session_del(cast(nghttp2_session *)session);
 }
 
-void freeCallBack(ref typeof(SmartGCAllocator.instance) , nghttp2_session_callbacks * callBack)
+void freeCallBack(ref typeof(SmartGCAllocator.instance) , void * callBack)// nghttp2_session_callbacks * callBack)
 {
-    nghttp2_session_callbacks_del(callBack);
+    nghttp2_session_callbacks_del(cast(nghttp2_session_callbacks *)callBack);
 }
 
-int onBeginHeadersCallback(nghttp2_session *session, const nghttp2_frame *frame, void *user_data) {
+extern(C):
+@system:
+int onBeginHeadersCallback(nghttp2_session *session, const(nghttp2_frame) *frame, void *user_data) {
  
     
     if (frame.hd.type != nghttp2_frame_type.NGHTTP2_HEADERS ||
         frame.headers.cat != nghttp2_headers_category.NGHTTP2_HCAT_REQUEST) {
         return 0;
     }
-    auto handler = cast(HTTP2CodecBuffer)(user_data);
+    auto handler = cast(HTTP2XCodec)(user_data);
     handler.newStream(frame.hd.stream_id);
     
     return 0;
 }
 
-int onHeaderCallback(nghttp2_session *session, const nghttp2_frame *frame, const ubyte *name, size_t namelen,
-    const ubyte *value, size_t valuelen, ubyte flags,
+int onHeaderCallback(nghttp2_session *session, const(nghttp2_frame) *frame, const(ubyte) *name, size_t namelen,
+    const(ubyte) *value, size_t valuelen, ubyte flags,
     void *user_data) {
     if (frame.hd.type != nghttp2_frame_type.NGHTTP2_HEADERS && frame.hd.type != nghttp2_frame_type.NGHTTP2_PUSH_PROMISE) {
         return 0;
@@ -182,7 +191,7 @@ int onHeaderCallback(nghttp2_session *session, const nghttp2_frame *frame, const
     else
         stream_id = frame.push_promise.promised_stream_id;
    
-    auto handler = cast(HTTP2CodecBuffer)(user_data);
+    auto handler = cast(HTTP2XCodec)(user_data);
     HTTPMessage header = handler._headers.get(stream_id,null);
     if (header is null) return 0;
     string key = cast(string)(name[0..namelen]);
@@ -190,7 +199,7 @@ int onHeaderCallback(nghttp2_session *session, const nghttp2_frame *frame, const
     switch(key)
     {
         case ":method":
-            header.method(method_id,get(val,HTTPMethod.INVAILD));
+            header.method(method_id.get(val,HTTPMethod.INVAILD));
         break;
         case ":scheme":
             header.url.scheme = val;
@@ -200,7 +209,7 @@ int onHeaderCallback(nghttp2_session *session, const nghttp2_frame *frame, const
             header.getHeaders.add("host",val);
             break;
         case ":path":
-            header.url(val);
+            header.setUrl(val);
             break;
         case ":status":{
                 ushort code = to!ushort(val);
@@ -216,7 +225,7 @@ int onHeaderCallback(nghttp2_session *session, const nghttp2_frame *frame, const
     return 0;
 }
 
-int onFrameRecvCallback(nghttp2_session *session, const nghttp2_frame *frame,
+int onFrameRecvCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
     void *user_data) {
     auto handler = cast(HTTP2CodecBuffer)(user_data);
 //
@@ -255,7 +264,7 @@ int onFrameRecvCallback(nghttp2_session *session, const nghttp2_frame *frame,
 }
 
 int onDataChunkRecvCallback(nghttp2_session *session, ubyte flags,
-    int stream_id, const ubyte *data,
+    int stream_id, const(ubyte) *data,
     size_t len, void *user_data) {
 //    auto handler = static_cast<http2_handler *>(user_data);
 //    auto strm = handler.find_stream(stream_id);
@@ -285,7 +294,7 @@ int onStreamCloseCallback(nghttp2_session *session, int stream_id,
     return 0;
 }
 
-int onFrameSendCallback(nghttp2_session *session, const nghttp2_frame *frame,
+int onFrameSendCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
     void *user_data) {
 //    auto handler = static_cast<http2_handler *>(user_data);
 //    
@@ -306,7 +315,7 @@ int onFrameSendCallback(nghttp2_session *session, const nghttp2_frame *frame,
 }
 
 int onFrameNotSendCallback(nghttp2_session *session,
-    const nghttp2_frame *frame, int lib_error_code,
+    const(nghttp2_frame) *frame, int lib_error_code,
     void *user_data) {
 //    if (frame.hd.type != NGHTTP2_HEADERS) {
 //        return 0;

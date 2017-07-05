@@ -434,7 +434,7 @@ abstract class HTTPCodec
 
 	static CodecProtocol getProtocolFormString(string str)
 	{
-		import collie.utils.string;
+		import yu.string;
 		if(isSameIngnoreLowUp(str,"websocket")){
 			return CodecProtocol.WEBSOCKET;
         } else if(isSameIngnoreLowUp(str,"H2C") || isSameIngnoreLowUp(str,"H2")){
