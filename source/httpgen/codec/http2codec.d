@@ -7,7 +7,9 @@ import httpgen.httpmessage;
 import httpgen.httptansaction;
 import yu.string;
 import yu.container.string;
+import containers.dynamicarray;
 import yu.memory.allocator;
+import std.experimental.allocator.mallocator;
 import std.array;
 import std.conv;
 import std.traits;
@@ -18,6 +20,12 @@ import std.exception;
 import containers.hashmap;
 import containers.internal.hash;
 
+enum Method_ = ":method";
+enum Seheme_ = ":scheme";
+enum Path_ = ":path";
+enum Status_ = ":status";
+
+
 class Http2CodecEcxeption : Exception
 {
     mixin basicExceptionCtors;
@@ -25,11 +33,13 @@ class Http2CodecEcxeption : Exception
 
 final class HTTP2XCodec : HTTPCodec
 { 
-    alias HeadersMap = HashMap!(StreamID,HTTPMessage,IAllocator,generateHash!StreamID,false);
+    alias HeadersMap = HashMap!(StreamID,HTTPMessage,YuAlloctor,generateHash!StreamID,false);
     alias SendBuffer = void delegate(HTTPCodecBuffer);
+    alias NgHttp2NvArray = DynamicArray!(nghttp2_nv,Mallocator,false);
 
     this(TransportDirection direction,SendBuffer send, uint maxFrmesize = (64 * 1024))
     {
+       
         _headers = HeadersMap(yuAlloctor);
         _transportDirection = direction;
         _finished = true;
@@ -53,16 +63,90 @@ final class HTTP2XCodec : HTTPCodec
         }
     }
 
-    override void setParserPaused(bool paused){}
-    
     override void setCallback(CallBack callback) {
         _callback = callback;
     }
 
+    override size_t onIngress(ubyte[] buf)
+    {
+        trace("on Ingress!!");
+        nghttp2_session * session = http2session();
+        if(!session) return 0;
+        auto readlen = nghttp2_session_mem_recv(session, buf.ptr,buf.length);
+        if(readlen < 0)
+            return 0;
+        if(nghttp2_session_send(session) != 0)
+            return 0;
+        return cast(size_t)readlen;
+    }
+
+    override bool shouldClose() {
+        nghttp2_session * session = http2session();
+        if(!session) return true;
+        return !nghttp2_session_want_read(session) &&
+            !nghttp2_session_want_write(session);
+    }
+   
 
     bool isUpStream(){
         return (_transportDirection == TransportDirection.UPSTREAM);
     }
+
+    override HTTPCodecBuffer generateHeader(
+        StreamID id,
+        scope HTTPMessage msg,
+        StreamID assocStream = 0,
+        bool eom = false)
+    {
+        char[10] statusBuffer;
+        char[] status;
+        NgHttp2NvArray attay = NgHttp2NvArray();
+        if(isUpStream && !msg.isPushPromise){
+            import core.internal.string;
+            status = unsignedToTempString(msg.statusCode,statusBuffer[],10);
+            attay ~= buildNghttp2NV(Status_, status, nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE);
+        } else {
+            attay ~= buildNghttp2NV(Method_, msg.methodString,nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE);
+            attay ~= buildNghttp2NV(Seheme_, msg.url.scheme.stdString,nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE);
+            attay ~= buildNghttp2NV(Path_, msg.url.path.stdString,nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE);
+        }
+        foreach(key,value; msg.getHeaders){
+            attay ~= buildNghttp2NV(key.stdString, value.stdString,nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME | nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE);
+        }
+        int flags = nghttp2_flag.NGHTTP2_FLAG_END_HEADERS;
+        if(eom)
+            flags |= nghttp2_flag.NGHTTP2_FLAG_END_STREAM;
+        nghttp2_submit_headers(http2session(),cast(ubyte)flags,id,null,attay.ptr,attay.length,null);
+        return null;
+    }
+    
+    override HTTPCodecBuffer generateBody(StreamID id,
+        in ubyte[] data,HTTPCodecBuffer buffer,
+        bool eom)
+    {
+        Http2ReadBuffer sbuf = Http2ReadBuffer(cast(ubyte[])data);
+        int flags = nghttp2_flag.NGHTTP2_FLAG_NONE;
+        if(eom)
+            flags |= nghttp2_flag.NGHTTP2_FLAG_END_STREAM;
+        nghttp2_data_provider source;
+        source.source.ptr = &sbuf;
+        source.read_callback = &readSend;
+        nghttp2_submit_data(http2session(), cast(ubyte)flags,cast(int)id,&source);
+        return null;
+    }
+    
+    override HTTPCodecBuffer generateEOM(StreamID id,HTTPCodecBuffer buffer = null)
+    {
+        Http2ReadBuffer sbuf = Http2ReadBuffer();
+        int flags = nghttp2_flag.NGHTTP2_FLAG_END_STREAM;
+        nghttp2_data_provider source;
+        source.source.ptr = &sbuf;
+        source.read_callback = &readSend;
+        nghttp2_submit_data(http2session(), cast(ubyte)flags,cast(int)id,&source);
+        return null;
+    }
+
+
 private:
     void initSession()
     {
@@ -70,7 +154,7 @@ private:
         int rv = nghttp2_session_callbacks_new(&callbacks);
         enforce!Http2CodecEcxeption((rv == 0), "nghttp2 create callback error! ");
         _sessionCallback.reset(callbacks);
-        nghttp2_session_callbacks_set_send_callback(callbacks, &send_callback);
+        nghttp2_session_callbacks_set_send_callback(callbacks, &sendCallback);
         nghttp2_session_callbacks_set_on_begin_headers_callback(
             callbacks, &onBeginHeadersCallback);
         nghttp2_session_callbacks_set_on_header_callback(callbacks,
@@ -81,10 +165,10 @@ private:
             callbacks, &onDataChunkRecvCallback);
         nghttp2_session_callbacks_set_on_stream_close_callback(
             callbacks, &onStreamCloseCallback);
-        nghttp2_session_callbacks_set_on_frame_send_callback(callbacks,
-            &onFrameSendCallback);
-        nghttp2_session_callbacks_set_on_frame_not_send_callback(
-            callbacks, &onFrameNotSendCallback);
+//        nghttp2_session_callbacks_set_on_frame_send_callback(callbacks,
+//            &onFrameSendCallback);
+//        nghttp2_session_callbacks_set_on_frame_not_send_callback(
+//            callbacks, &onFrameNotSendCallback);
         nghttp2_session * session;
         if(isUpStream())
             rv = nghttp2_session_client_new(&session, callbacks, cast(void*)this);
@@ -105,6 +189,14 @@ private:
         _headers[id] = msg;
         if(_callback)
             _callback.onMessageBegin(id, msg);
+    }
+
+    void closeStream(StreamID id, uint error_code)
+    {
+        HTTPMessage msg = _headers.get(id,null);
+        if(!msg)yDel(msg);
+        if(_callback)
+            _callback.onError(id, cast(HTTPErrorCode)error_code);
     }
 
 private:
@@ -130,18 +222,51 @@ void freeCallBack(ref typeof(SmartGCAllocator.instance) , void * callBack)// ngh
     nghttp2_session_callbacks_del(cast(nghttp2_session_callbacks *)callBack);
 }
 
+struct Http2ReadBuffer
+{
+    this(ubyte[] dt)
+    {
+        data = dt;
+    }
+    size_t read(ubyte * buf, size_t len)
+    {
+        import core.stdc.string : memcpy;
+        if(data.length == 0) return 0;
+        size_t rlen;
+        if(len >= data.length){
+            rlen = data.length;
+            memcpy(buf,data.ptr,rlen);
+            data = null;
+        } else {
+            rlen = len;
+            memcpy(buf,data.ptr,rlen);
+            data = data[len..$];
+        }
+        return rlen;
+    }
+    
+private:
+    ubyte[] data;
+}
+
 extern(C):
 @system:
 int onBeginHeadersCallback(nghttp2_session *session, const(nghttp2_frame) *frame, void *user_data) {
  
     
     if (frame.hd.type != nghttp2_frame_type.NGHTTP2_HEADERS ||
-        frame.headers.cat != nghttp2_headers_category.NGHTTP2_HCAT_REQUEST) {
+        frame.headers.cat != nghttp2_headers_category.NGHTTP2_HCAT_REQUEST || frame.hd.type != NGHTTP2_PUSH_PROMISE) {
         return 0;
     }
+    auto stream_id = 0;
+    if(frame.hd.type == nghttp2_frame_type.NGHTTP2_HEADERS)
+        stream_id = frame.hd.stream_id;
+    else
+        stream_id = frame.push_promise.promised_stream_id;
+
     auto handler = cast(HTTP2XCodec)(user_data);
-    handler.newStream(frame.hd.stream_id);
-    
+    handler.newStream(stream_id);
+
     return 0;
 }
 
@@ -184,6 +309,7 @@ int onHeaderCallback(nghttp2_session *session, const(nghttp2_frame) *frame, cons
                 header.statusCode(code);
         }
             break;
+        //case ":authority" :
         default:
             if(key[0] == ':')
                 key = key[1..$];
@@ -196,37 +322,35 @@ int onHeaderCallback(nghttp2_session *session, const(nghttp2_frame) *frame, cons
 int onFrameRecvCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
     void *user_data) {
     auto handler = cast(HTTP2XCodec)(user_data);
-//
-//    auto strm = handler.find_stream(frame.hd.stream_id);
-//    
-//    switch (frame.hd.type) {
-//        case NGHTTP2_DATA:
-//            if (!strm) {
-//                break;
-//            }
-//            
-//            if (frame.hd.flags & NGHTTP2_FLAG_END_STREAM) {
-//                strm.request().impl().call_on_data(nullptr, 0);
-//            }
-//            
-//            break;
-//        case NGHTTP2_HEADERS: {
-//            if (!strm || frame.headers.cat != NGHTTP2_HCAT_REQUEST) {
-//                break;
-//            }
-//            
-//            auto &req = strm.request().impl();
-//            req.remote_endpoint(handler.remote_endpoint());
-//            
-//            handler.call_on_request(*strm);
-//            
-//            if (frame.hd.flags & NGHTTP2_FLAG_END_STREAM) {
-//                strm.request().impl().call_on_data(nullptr, 0);
-//            }
-//            
-//            break;
-//        }
-//    }
+    auto stream_id = 0;
+    if(frame.hd.type == nghttp2_frame_type.NGHTTP2_HEADERS)
+        stream_id = frame.hd.stream_id;
+    else
+        stream_id = frame.push_promise.promised_stream_id;
+    auto handler = cast(HTTP2XCodec)(user_data);
+  
+    switch (frame.hd.type) with (nghttp2_frame_type){
+        case NGHTTP2_DATA:           
+            if (frame.hd.flags & NGHTTP2_FLAG_END_STREAM) {
+                if(handler._callback)
+                    handler._callback.onMessageComplete(stream_id,false);
+            }
+           break;
+        case NGHTTP2_HEADERS: {
+            if (frame.headers.cat != NGHTTP2_HCAT_REQUEST) {
+                break;
+            }
+            if(!handler._callback)
+                break;
+
+            handler._callback.onHeadersComplete(stream_id, handler._headers.get(stream_id,null));
+            
+            if (frame.hd.flags & NGHTTP2_FLAG_END_STREAM) 
+                handler._callback.onMessageComplete(stream_id,false);
+
+            break;
+        }
+    }
     
     return 0;
 }
@@ -234,75 +358,45 @@ int onFrameRecvCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
 int onDataChunkRecvCallback(nghttp2_session *session, ubyte flags,
     int stream_id, const(ubyte) *data,
     size_t len, void *user_data) {
-//    auto handler = static_cast<http2_handler *>(user_data);
-//    auto strm = handler.find_stream(stream_id);
-//    
-//    if (!strm) {
-//        return 0;
-//    }
-//    
-//    strm.request().impl().call_on_data(data, len);
-//    
+    auto handler = cast(HTTP2XCodec)(user_data);
+    if(handler._callback)
+        handler._callback.onBody(cast(HTTP2XCodec.StreamID)stream_id,data[0..len]);  
     return 0;
 }
 
 int onStreamCloseCallback(nghttp2_session *session, int stream_id,
     uint error_code, void *user_data) {
-//    auto handler = static_cast<http2_handler *>(user_data);
-//    
-//    auto strm = handler.find_stream(stream_id);
-//    if (!strm) {
-//        return 0;
-//    }
-//    
-//    strm.response().impl().call_on_close(error_code);
-//    
-//    handler.close_stream(stream_id);
-//    
+    auto handler = cast(HTTP2XCodec)(user_data);
+    handler.closeStream(cast(HTTP2XCodec.StreamID)stream_id, error_code);  
     return 0;
 }
 
-int onFrameSendCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
-    void *user_data) {
-//    auto handler = static_cast<http2_handler *>(user_data);
-//    
-//    if (frame.hd.type != NGHTTP2_PUSH_PROMISE) {
-//        return 0;
-//    }
-//    
-//    auto strm = handler.find_stream(frame.push_promise.promised_stream_id);
-//    
-//    if (!strm) {
-//        return 0;
-//    }
-//    
-//    auto &res = strm.response().impl();
-//    res.push_promise_sent();
-    
-    return 0;
-}
-
-int onFrameNotSendCallback(nghttp2_session *session,
-    const(nghttp2_frame) *frame, int lib_error_code,
-    void *user_data) {
-//    if (frame.hd.type != NGHTTP2_HEADERS) {
-//        return 0;
-//    }
-//    
-//    // Issue RST_STREAM so that stream does not hang around.
-//    nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, frame.hd.stream_id,
-//        NGHTTP2_INTERNAL_ERROR);
-    
-    return 0;
-}
-
-ssize_t send_callback(nghttp2_session *session, const (ubyte) *data,
+ssize_t sendCallback(nghttp2_session *session, const (ubyte) *data,
     size_t length, int flags, void *user_data) {
     auto handler = cast(HTTP2XCodec)(user_data);
     if(length > 0 && handler._sendFun){
         HTTPCodecBuffer buffer = yNew!HTTPCodecBuffer();
         buffer.put(data[0..length]);
+        handler._sendFun(buffer);
     }
-    //TODO: send
     return cast(ssize_t)length;
+}
+
+auto buildNghttp2NV(const(char)[] key, const(char)[] v, int flags = 0)
+{
+    nghttp2_nv nv;
+    nv.name = cast(ubyte *)key.ptr;
+    nv.namelen = key.length;
+    nv.value = cast(ubyte *) v.ptr;
+    nv.valuelen = v.length;
+    nv.flags = cast(ubyte)flags;
+    return nv;
+}
+
+import core.stdc.config;
+
+c_long readSend(nghttp2_session* session, int stream_id, ubyte* buf, size_t length, uint* data_flags, nghttp2_data_source* source, void* user_data)
+{
+    Http2ReadBuffer * buf = cast(Http2ReadBuffer *)(source.ptr);
+    return cast(c_long)buf.read(buf,length);
 }

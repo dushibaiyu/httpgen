@@ -62,16 +62,11 @@ final class HTTP1XCodec : HTTPCodec
 		return 0;
 	}
 
-	override bool isBusy() {
-		return !_finished;
-	}
 
 	override bool shouldClose()
 	{
 		return !_keepalive;
 	}
-
-	override void setParserPaused(bool paused){}
 
 	override void setCallback(CallBack callback) {
 		_callback = callback;
@@ -90,9 +85,6 @@ final class HTTP1XCodec : HTTPCodec
 		return cast(size_t) size;
 	}
 
-	override void onTimeOut()
-	{
-	}
 
 	override void detach(StreamID id)
 	{

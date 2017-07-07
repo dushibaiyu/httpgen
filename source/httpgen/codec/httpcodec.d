@@ -17,7 +17,7 @@ import httpgen.httptansaction;
 import yu.asyncsocket.tcpsocket;
 import yu.memory.sharedref;
 import yu.exception;
-import std.experimental.allocator;
+import yu.memory.allocator;
 import yu.container.string;
 
 enum CodecProtocol : ubyte {
@@ -35,7 +35,7 @@ final class HTTPCodecBuffer : TCPWriteBuffer
     import std.experimental.allocator.mallocator;
     
     alias BufferData = Vector!(ubyte, Mallocator,false);
-    alias SharedCallback =  ISharedRef!(IAllocator, HTTPCodec.CallBack,true);
+    alias SharedCallback =  ISharedRef!(YuAlloctor, HTTPCodec.CallBack,true);
 
     final setCallback(SharedCallback cback)
     {
@@ -49,7 +49,12 @@ final class HTTPCodecBuffer : TCPWriteBuffer
     
     override void doFinish() nothrow {
         auto ptr = this;
-        yuCathException(_cback.clear());
+        if(!_cback.isNull){
+            yuCathException((){
+                    _cback.onSend(_data.length,sended);
+                    _cback.clear();
+                }());   
+        }
         yuCathException(yDel(ptr));
     }
     
@@ -68,7 +73,7 @@ final class HTTPCodecBuffer : TCPWriteBuffer
     
 private:
     BufferData _data;
-    uint sended = 0;
+    size_t sended = 0;
 private:
     SharedCallback _cback; //  session 引用技术，防止提前释放
 }
@@ -95,7 +100,6 @@ abstract class HTTPCodec
      * @param msg      A newly allocated HTTPMessage
      */
 	 void onMessageBegin(StreamID id, HTTPMessage msg);
-		
 		/**
      * Called when a new push message is seen while parsing the ingress.
      *
@@ -180,70 +184,6 @@ abstract class HTTPCodec
 			HTTPErrorCode code);
 
         void onWsFrame(StreamID id ,ref WSFrame);
-		/**
-     * Called upon receipt of a frame header.
-     * @param stream_id The stream ID
-     * @param flags     The flags field of frame header
-     * @param length    The length field of frame header
-     * @param version   The version of frame (SPDY only)
-     * @note Not all protocols have frames. SPDY does, but HTTP/1.1 doesn't.
-     */
-//		void onFrameHeader(uint stream_id,
-//			ubyte flags,
-//			uint length,
-//			ushort version_ = 0);
-		
-		/**
-     * Called upon receipt of a goaway.
-     * @param lastGoodStreamID  Last successful stream created by the receiver
-     * @param code              The code the connection was aborted with
-     * @param debugData         The additional debug data for diagnostic purpose
-     * @note Not all protocols have goaways. SPDY does, but HTTP/1.1 doesn't.
-     */
-//		void onGoaway(ulong lastGoodStreamID,
-//			HTTPErrorCode code,
-//			const ubyte[] debugData = null);
-
-		/**
-     * Called upon receipt of a ping request
-     * @param uniqueID  Unique identifier for the ping
-     * @note Not all protocols have pings.  SPDY does, but HTTP/1.1 doesn't.
-     */
-//		void onPingRequest(ulong uniqueID);
-		
-		/**
-     * Called upon receipt of a ping reply
-     * @param uniqueID  Unique identifier for the ping
-     * @note Not all protocols have pings.  SPDY does, but HTTP/1.1 doesn't.
-     */
-//		void onPingReply(ulong uniqueID);
-		
-		/**
-     * Called upon receipt of a window update, for protocols that support
-     * flow control. For instance spdy/3 and higher.
-     */
-//		void onWindowUpdate(StreamID id, uint amount);
-		
-		/**
-     * Called upon receipt of a settings frame, for protocols that support
-     * settings.
-     *
-     * @param settings a list of settings that were sent in the settings frame
-     */
-		//void onSettings(const SettingsList& settings);
-		
-		/**
-     * Called upon receipt of a settings frame with ACK set, for
-     * protocols that support settings ack.
-     */
-//		void onSettingsAck();
-		
-		/**
-     * Called upon receipt of a priority frame, for protocols that support
-     * dynamic priority
-     */
-//		void onPriority(StreamID id,
-//			const HTTPMessage::HTTPPriority& pri);
 		
 		/**
      * Called upon receipt of a valid protocol switch.  Return false if
@@ -254,21 +194,9 @@ abstract class HTTPCodec
 			CodecProtocol protocol,
 			String protocolString,
 			HTTPMessage msg);
-		/**
-     * Return the number of open streams started by this codec callback.
-     * Parallel codecs with a maximum number of streams will invoke this
-     * to determine if a new stream exceeds the limit.
-     */
-		//uint32_t numOutgoingStreams() const { return 0; }
-		
-		/**
-     * Return the number of open streams started by the remote side.
-     * Parallel codecs with a maximum number of streams will invoke this
-     * to determine if a new stream exceeds the limit.
-     */
-		//uint32_t numIncomingStreams() const { return 0; }
 
-
+        // check to close and check other to send.
+        void onSend(size_t shoudleSend, size_t sended);
 	}
 
 	CodecProtocol getProtocol();
@@ -281,19 +209,7 @@ abstract class HTTPCodec
    */
 	TransportDirection getTransportDirection();
 	
-	/**
-   * Returns true iff this codec supports per stream flow control
-   */
-	bool supportsStreamFlowControl() const {
-		return false;
-	}
-	
-	/**
-   * Returns true iff this codec supports session level flow control
-   */
-	bool supportsSessionFlowControl() const {
-		return false;
-	}
+
 	
 	/**
    * Set the callback to notify on ingress events
@@ -301,20 +217,10 @@ abstract class HTTPCodec
    */
 	void setCallback(CallBack callback);
 	
-	/**
-   * Check whether the codec still has at least one HTTP
-   * stream to parse.
-   */
-    bool isBusy(){return false;}
 
 	bool shouldClose();
-	
-	/**
-   * Pause or resume the ingress parser
-   * @param paused  Whether the caller wants the parser to be paused
-   */
-	void setParserPaused(bool paused)
-    {}
+
+    void checkSend(){}
 	
 	/**
    * Parse ingress data.
@@ -323,7 +229,6 @@ abstract class HTTPCodec
    */
 	size_t onIngress(ubyte[] buf);
 
-    void onTimeOut(){}
 
 	void detach(StreamID id);
 	/**
@@ -339,47 +244,7 @@ abstract class HTTPCodec
 	bool onIngressUpgradeMessage(const HTTPMessage msg) {
 		return true;
 	}
-	
-	/**
-   * Check whether the codec can process new streams. Typically,
-   * an implementing subclass will return true when a new codec is
-   * created and false once it encounters a situation that would
-   * prevent reuse of the underlying transport (e.g., a "Connection: close"
-   * in HTTP/1.x).
-   * @note A return value of true means that the codec can process new
-   *       connections at some reasonable point in the future; that may
-   *       mean "immediately," for codecs that support pipelined or
-   *       interleaved requests, or "upon completion of the current
-   *       stream" for codecs that do not.
-   */
-    bool isReusable(){return false;}
-	
-	/**
-   * Returns true if this codec is in a state where it accepting new
-   * requests but will soon begin to reject new requests. For SPDY and
-   * HTTP/2, this is true when the first GOAWAY NO_ERROR is sent during
-   * graceful shutdown.
-   */
-    bool isWaitingToDrain(){return false;}
-	
-	/**
-   * Checks whether the socket needs to be closed when EOM is sent. This is used
-   * during CONNECT when EOF needs to be sent after upgrade to notify the server
-   */
-    bool closeOnEgressComplete(){return false;}
-	
-	/**
-   * Check whether the codec supports the processing of multiple
-   * requests in parallel.
-   */
-    bool supportsParallelRequests(){return false;}
-	
-	/**
-   * Check whether the codec supports pushing resources from server to
-   * client.
-   */
-    bool supportsPushTransactions(){return false;}
-	
+
 	/**
    * Write an egress message header.  For pushed streams, you must specify
    * the assocStream.

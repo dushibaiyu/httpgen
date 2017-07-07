@@ -86,6 +86,9 @@ final class HTTPMessage
 	@property void chunked(bool chunked) { _chunked = chunked; }
 	@property bool chunked() const { return _chunked; }
 
+    @property bool isPushPromise() const {return _isPushPromise;}
+    @property void isPushPromise(bool push) { _isPushPromise = push; }
+
 	/**
    * Is this an upgraded message? (fpreq, fpresp)
    */
@@ -506,6 +509,7 @@ private:
 	bool _chunked = false;
 	bool _upgraded = false;
 	bool _wantsKeepalive = true;
+    bool _isPushPromise = false;
 }
 
 

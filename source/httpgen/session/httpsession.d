@@ -50,7 +50,7 @@ interface SessionDown
 }
 
 /// HTTPSession will not send any read event
-abstract class HTTPSession : HTTPTransaction.Transport,
+abstract class HTTPSession : //HTTPTransaction.Transport,
 	HTTPCodec.CallBack
 {
 	alias StreamID = HTTPCodec.StreamID;

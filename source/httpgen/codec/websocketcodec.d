@@ -46,12 +46,6 @@ final class WebsocketCodec : HTTPCodec
 		return CodecProtocol.WEBSOCKET;
 	}
 	
-	override void onTimeOut()
-	{
-        if(_callback)
-            _callback.onAbort(0,HTTPErrorCode.TIME_OUT);
-	}
-	
     override void detach(StreamID id)
 	{
 
@@ -66,17 +60,6 @@ final class WebsocketCodec : HTTPCodec
 	override StreamID createStream() {
 		return 0;
 	}
-	
-	override bool isBusy() {
-		return !_finished;
-	}
-	
-	override bool shouldClose()
-	{
-		return _shouldClose;
-	}
-	
-	override void setParserPaused(bool paused){}
 	
 	override void setCallback(CallBack callback) {
 		_callback = callback;
