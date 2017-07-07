@@ -255,7 +255,7 @@ int onBeginHeadersCallback(nghttp2_session *session, const(nghttp2_frame) *frame
  
     
     if (frame.hd.type != nghttp2_frame_type.NGHTTP2_HEADERS ||
-        frame.headers.cat != nghttp2_headers_category.NGHTTP2_HCAT_REQUEST || frame.hd.type != NGHTTP2_PUSH_PROMISE) {
+        frame.headers.cat != nghttp2_headers_category.NGHTTP2_HCAT_REQUEST || frame.hd.type != nghttp2_frame_type.NGHTTP2_PUSH_PROMISE) {
         return 0;
     }
     auto stream_id = 0;
@@ -321,7 +321,6 @@ int onHeaderCallback(nghttp2_session *session, const(nghttp2_frame) *frame, cons
 
 int onFrameRecvCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
     void *user_data) {
-    auto handler = cast(HTTP2XCodec)(user_data);
     auto stream_id = 0;
     if(frame.hd.type == nghttp2_frame_type.NGHTTP2_HEADERS)
         stream_id = frame.hd.stream_id;
@@ -331,13 +330,13 @@ int onFrameRecvCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
   
     switch (frame.hd.type) with (nghttp2_frame_type){
         case NGHTTP2_DATA:           
-            if (frame.hd.flags & NGHTTP2_FLAG_END_STREAM) {
+            if (frame.hd.flags & nghttp2_flag.NGHTTP2_FLAG_END_STREAM) {
                 if(handler._callback)
                     handler._callback.onMessageComplete(stream_id,false);
             }
            break;
         case NGHTTP2_HEADERS: {
-            if (frame.headers.cat != NGHTTP2_HCAT_REQUEST) {
+            if (frame.headers.cat != nghttp2_headers_category.NGHTTP2_HCAT_REQUEST) {
                 break;
             }
             if(!handler._callback)
@@ -345,9 +344,11 @@ int onFrameRecvCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
 
             handler._callback.onHeadersComplete(stream_id, handler._headers.get(stream_id,null));
             
-            if (frame.hd.flags & NGHTTP2_FLAG_END_STREAM) 
+            if (frame.hd.flags & nghttp2_flag.NGHTTP2_FLAG_END_STREAM) 
                 handler._callback.onMessageComplete(stream_id,false);
 
+            break;
+         default:
             break;
         }
     }
@@ -397,6 +398,6 @@ import core.stdc.config;
 
 c_long readSend(nghttp2_session* session, int stream_id, ubyte* buf, size_t length, uint* data_flags, nghttp2_data_source* source, void* user_data)
 {
-    Http2ReadBuffer * buf = cast(Http2ReadBuffer *)(source.ptr);
-    return cast(c_long)buf.read(buf,length);
+    Http2ReadBuffer * http2buf = cast(Http2ReadBuffer *)(source.ptr);
+    return cast(c_long)http2buf.read(buf,length);
 }
