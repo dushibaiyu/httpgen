@@ -22,12 +22,8 @@ struct HTTPHeaders
 	* Remove all instances of the given header, returning true if anything was
 	* removed and false if this header didn't exist in our set.
 	*/
-	bool remove(ref String name)
-	{
-		return remove(name.stdString());
-	}
-
-	bool remove(string name){
+	bool remove(STR)(STR value){
+        string name = cast(string)value;
 		HTTPHeaderCode code = headersHash(name);
 		if(code != HTTPHeaderCode.OTHER)
 			return remove(code);
@@ -66,29 +62,27 @@ struct HTTPHeaders
 		return removed;
 	}
 
-	void add(STR)(auto ref STR name, auto ref STR value)
+	void add(STR)(auto ref STR key, auto ref STR value)
 	in{
 		assert(name.length > 0);
 	}
 	body{
-		static if(isStdString!STR){
-			HTTPHeaderCode code = headersHash(name);
-		} else {
-			HTTPHeaderCode code = headersHash(name.stdString());
-		}
+        string name = cast(string)key;
+		HTTPHeaderCode code = headersHash(name);
 		_codes.insertBack(code);
 		if(code == HTTPHeaderCode.OTHER) {
 			_headersNames.append(String(HTTPHeaderCodeName[code]));
 		} else {
-			static if(isStdString!STR)
-				_headersNames.append(String(name));
+            static if(isYuString!STR)
+                _headersNames.append(key);
 			else
-				_headersNames.append(name);
+				_headersNames.append(String(name));
 		}
-		static if(isStdString!STR)
-				_headerValues.append(String(value));
+        string tvalue = cast(string)value;
+        static if(isYuString!STR)
+            _headerValues.append(value);
 		else
-			_headerValues.append(value);
+            _headerValues.append(String(tvalue));
 
 	}
 	void add(STR)(HTTPHeaderCode code, auto ref STR value)
@@ -97,10 +91,13 @@ struct HTTPHeaders
 			return;
 		_codes.insertBack(code);
 		_headersNames.insertBack(String(HTTPHeaderCodeName[code]));
-		static if(isStdString!STR)
-				_headerValues.append(String(value));
-		else
-			_headerValues.append(value);
+		static if(isYuString!STR)
+            _headerValues.append(value);
+        else{
+            string tvalue = cast(string)value;
+            _headerValues.append(String(tvalue));
+        }
+			
 	}
 
 	void set(STR)(auto ref STR name, auto ref STR value)
@@ -115,13 +112,9 @@ struct HTTPHeaders
 		add(code, value);
 	}
 
-	bool exists(ref String name)
+    bool exists(STR)(STR key)
 	{
-		return exists(name.stdString);
-	}
-
-	bool exists(string name)
-	{
+        string name = cast(string)key;
 		HTTPHeaderCode code = headersHash(name);
 		if(code != HTTPHeaderCode.OTHER)
 			return exists(code);
@@ -283,13 +276,9 @@ struct HTTPHeaders
    * true), and false otherwise.
    */
 	alias LAMBDA = bool delegate(String value);
-	bool forEachValueOfHeader(ref String name, scope LAMBDA func)
+    bool forEachValueOfHeader(STR)(STR key,scope LAMBDA func)
 	{
-		return forEachValueOfHeader(name.stdString,func);
-	}
-
-	bool forEachValueOfHeader(string name,scope LAMBDA func)
-	{
+        string name = cast(string)key;
 		HTTPHeaderCode code = headersHash(name);
 		if(code != HTTPHeaderCode.OTHER)
 			return forEachValueOfHeader(code,func);
@@ -329,7 +318,7 @@ private :
 	size_t _deletedCount = 0;
 }
 
-template isStdString(STR)
+template isYuString(STR)
 {
-	enum isStdString = (is(STR == string));
+    enum isYuString = (is(STR == String));
 }

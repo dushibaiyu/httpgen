@@ -466,7 +466,7 @@ protected:
 		import yu.string;
 		if(_parsedQueryParams) return;
 		_parsedQueryParams = true;
-        string query = _url.query.stdString;
+        string query = cast(string)_url.query;
 		if(query.length == 0) return;
 		splitNameValue(query, '&', '=',(string name,string value){
 				name = strip(name);

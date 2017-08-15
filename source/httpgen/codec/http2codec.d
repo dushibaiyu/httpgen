@@ -146,6 +146,12 @@ final class HTTP2XCodec : HTTPCodec
         return null;
     }
 
+    void onHeadersComplete(StreamID id){
+        if(!_callback)
+            return;
+        _callback.onHeadersComplete(stream_id, _headers.get(stream_id,null));
+        _headers.remove(id);
+    }
 
 private:
     void initSession()
@@ -339,11 +345,9 @@ int onFrameRecvCallback(nghttp2_session *session, const(nghttp2_frame) *frame,
             if (frame.headers.cat != nghttp2_headers_category.NGHTTP2_HCAT_REQUEST) {
                 break;
             }
-            if(!handler._callback)
-                break;
 
-            handler._callback.onHeadersComplete(stream_id, handler._headers.get(stream_id,null));
-            
+            handler.onHeadersComplete(stream_id);
+
             if (frame.hd.flags & nghttp2_flag.NGHTTP2_FLAG_END_STREAM) 
                 handler._callback.onMessageComplete(stream_id,false);
 

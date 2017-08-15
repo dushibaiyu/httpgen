@@ -10,7 +10,6 @@
  */
 module httpgen.session.httpsession;
 
-version(TO_DO):
 import httpgen.headers;
 import httpgen.httpmessage;
 import httpgen.httptansaction;
@@ -18,14 +17,18 @@ import httpgen.codec.httpcodec;
 import httpgen.codec.wsframe;
 import httpgen.errocode;
 
-import collie.socket.tcpsocket;
-import collie.utils.functional;
 import std.socket;
+import yu.memory.allocator;
+import yu.memory.smartref;
+import containers.hashmap;
+
+import std.experimental.logger;
+import yu.container.string;
 
 
 abstract class HTTPSessionController
 {
-	HTTPTransactionHandler getRequestHandler(HTTPTransaction txn, HTTPMessage msg);
+    HTTPTransactionHandler getRequestHandler(HTTPSession.SharedTansaction txn, HTTPMessage msg);
 
 	void attachSession(HTTPSession session){}
 	
@@ -50,10 +53,15 @@ interface SessionDown
 }
 
 /// HTTPSession will not send any read event
-abstract class HTTPSession : //HTTPTransaction.Transport,
+abstract class HTTPSession : HTTPTransaction.Transport,
 	HTTPCodec.CallBack
 {
 	alias StreamID = HTTPCodec.StreamID;
+    alias SharedHttpMsg = ISharedRef!(YuAlloctor,HTTPMessage,false);
+    alias SharedTansaction = ISharedRef!(YuAlloctor, HTTPTransaction, false);
+    alias TansactionMap = HashMap!(StreamID,SharedTansaction,YuAlloctor,generateHash!StreamID,false);
+    alias SharedCallback = HTTPCodecBuffer.SharedCallback;
+
 	interface InfoCallback {
 		// Note: you must not start any asynchronous work from onCreate()
 		void onCreate(HTTPSession);
@@ -66,27 +74,25 @@ abstract class HTTPSession : //HTTPTransaction.Transport,
 		void onDeactivateConnection(HTTPSession);
 		// Note: you must not start any asynchronous work from onDestroy()
 		void onDestroy(HTTPSession);
-		void onIngressMessage(HTTPSession,
-			HTTPMessage);
-		void onIngressLimitExceeded(HTTPSession);
-		void onIngressPaused(HTTPSession);
-		void onTransactionDetached(HTTPSession);
-		void onPingReplySent(ulong latency);
-		void onPingReplyReceived();
-		void onSettingsOutgoingStreamsFull(HTTPSession);
-		void onSettingsOutgoingStreamsNotFull(HTTPSession);
-		void onFlowControlWindowClosed(HTTPSession);
-		void onEgressBuffered(HTTPSession);
-		void onEgressBufferCleared(HTTPSession);
 	}
+
 
 	this(HTTPSessionController controller,HTTPCodec codec,SessionDown down)
 	{
+        _transaction = TansactionMap(yuAlloctor);
 		_controller = controller;
 		_down = down;
 		_codec = codec;
 		_codec.setCallback(this);
 	}
+
+    mixin EnableSharedFromThisImpl!(YuAlloctor,HTTPSession,true);
+
+    SharedCallback sharedCallBackThis()
+    {
+        auto sthis = sharedFromThis();
+        return sthis.castTo!(HTTPCodec.CallBack)();
+    }
 
 //	//HandlerAdapter {
 //	void onRead(ubyte[] msg) {
@@ -111,263 +117,170 @@ abstract class HTTPSession : //HTTPTransaction.Transport,
 //
 //	//HandlerAdapter}
 //	//HTTPTransaction.Transport, {
-//	override  void pauseIngress(HTTPTransaction txn){}
-//	
-//	override void resumeIngress(HTTPTransaction txn){}
-//	
-//	override void transactionTimeout(HTTPTransaction txn){}
-//	
-//	override void sendHeaders(HTTPTransaction txn,
-//		HTTPMessage headers,
-//		bool eom)
-//	{
-//		HVector tdata;
-//		_codec.generateHeader(txn,headers,tdata,eom);
-//
-//		//auto cback = eom ? bind(&closeWriteCallBack,txn) : &writeCallBack;
-//		//_down.httpWrite(tdata.data(true),cback);
-//		if(eom){
-//			_down.httpWrite(tdata.data(true),&closeWriteCallBack);
-//			_down.post(&txn.onDelayedDestroy);
-//		} else {
-//			_down.httpWrite(tdata.data(true),&writeCallBack);
-//		}
-//
-//	}
-//
-//	override size_t sendBody(HTTPTransaction txn,ref HVector body_,bool eom) {
-//		size_t rlen = getCodec.generateBody(txn,body_,eom);
-//		trace("sendBody!! ",rlen);
-//
-////		auto cback = eom ? bind(&closeWriteCallBack,txn) : &writeCallBack;
-////		_down.httpWrite(body_.data(true),cback);
-//		if(eom){
-//			_down.httpWrite(body_.data(true),&closeWriteCallBack);
-//			_down.post(&txn.onDelayedDestroy);
-//		} else {
-//			_down.httpWrite(body_.data(true),&writeCallBack);
-//		}
-//
-//		return rlen;
-//	}
-//
-//	override size_t sendBody(HTTPTransaction txn,
-//		ubyte[] data,
-//		bool eom)
-//	{
-//		HVector tdata = HVector(data);
-//		size_t rlen = getCodec.generateBody(txn,tdata,eom);
-//
-////		auto cback = eom ? bind(&closeWriteCallBack,txn) : &writeCallBack;
-////		_down.httpWrite(tdata.data(true),cback);
-//		if(eom){
-//			_down.httpWrite(tdata.data(true),&closeWriteCallBack);
-//			_down.post(&txn.onDelayedDestroy);
-//		} else {
-//			_down.httpWrite(tdata.data(true),&writeCallBack);
-//		}
-//
-//		return rlen;
-//	}
-//	
-//	override size_t sendChunkHeader(HTTPTransaction txn,size_t length)
-//	{
-//		HVector tdata;
-//		size_t rlen = getCodec.generateChunkHeader(txn,tdata,length);
-//		_down.httpWrite(tdata.data(true),&writeCallBack);
-//		return rlen;
-//	}
-//
-//	
-//	override size_t sendChunkTerminator(HTTPTransaction txn)
-//	{
-//		HVector tdata;
-//		size_t rlen = getCodec.generateChunkTerminator(txn,tdata);
-//
-////		auto cback = bind(&closeWriteCallBack,txn);
-////		_down.httpWrite(tdata.data(true),cback);
-//			_down.httpWrite(tdata.data(true),&closeWriteCallBack);
-//			_down.post(&txn.onDelayedDestroy);
-//
-//		return rlen;
-//	}
-//	
-//
-//	override size_t sendEOM(HTTPTransaction txn)
-//	{
-//		HVector tdata;
-//		size_t rlen = getCodec.generateEOM(txn,tdata);
-//		trace("send eom!! ",rlen);
-//		//if(rlen) 
-//			//_down.httpWrite(tdata.data(true),bind(&closeWriteCallBack,txn));
-//		if(rlen){
-//			_down.httpWrite(tdata.data(true),&closeWriteCallBack);
-//			_down.post(&txn.onDelayedDestroy);
-//		} else {
-//			_down.post((){
-//					txn.onDelayedDestroy();
-//					if(_codec is null || _codec.shouldClose()) {
-//						trace("\t\t --------do close!!!");
-//						_down.httpClose();
-//					}
-//				});
-//		}
-//		return rlen;
-//	}
-//
-//	//		size_t sendAbort(HTTPTransaction txn,
-//	//			HTTPErrorCode statusCode);
-//
-//	override void socketWrite(HTTPTransaction txn,ubyte[] data,HTTPTransaction.Transport.SocketWriteCallBack cback) {
-//		_down.httpWrite(data,cback);
-//	}
-//
-//
-//	override size_t sendWsData(HTTPTransaction txn,OpCode code,ubyte[] data)
-//	{
-//		HVector tdata;
-//		size_t rlen = getCodec.generateWsFrame(txn,tdata,code,data);
-//		if(rlen) {
-//			bool eom = getCodec.shouldClose();
-////			auto cback = eom ? bind(&closeWriteCallBack,txn) : &writeCallBack;
-////			_down.httpWrite(tdata.data(true),cback);
-//			if(eom){
-//				_down.httpWrite(tdata.data(true),&closeWriteCallBack);
-//				_down.post(&txn.onDelayedDestroy);
-//			} else {
-//				_down.httpWrite(tdata.data(true),&writeCallBack);
-//			}
-//		}
-//		return rlen;
-//	}
-//
-//	override void notifyPendingEgress()
-//	{}
-//	
-//	override void detach(HTTPTransaction txn)
-//	{
-//		if(_codec)
-//			_codec.detach(txn);
-//	}
-//	
-//	//		void notifyIngressBodyProcessed(uint32_t bytes);
-//	//		
-//	//		void notifyEgressBodyBuffered(int64_t bytes);
-//	
-//	override Address getLocalAddress(){
-//		return _localAddr;
-//	}
-//	
-//	override Address getPeerAddress(){
-//		return _peerAddr;
-//	}
-//	
-//	
-//	override HTTPCodec getCodec(){
-//		return _codec;
-//	}
-//
-//	void restCodeC(HTTPCodec codec){
-//		if(_codec)
-//			_codec.setCallback(null);
-//		codec.setCallback(this);
-//		_codec = codec;
-//	}
-//	
-//	override bool isDraining(){return false;}
-//	//HTTPTransaction.Transport, }
-//
-//
-//	// HTTPCodec.CallBack {
-//	override void onMessageBegin(HTTPTransaction txn, HTTPMessage msg)
-//	{
-//		if(txn){
-//			txn.transport = this;
-//		}
-//		trace("begin a http requst or reaponse!");
-//	}
-//
-//	override void onHeadersComplete(HTTPTransaction txn,
-//		HTTPMessage msg){
-//		trace("onHeadersComplete ------");
-//		msg.clientAddress = getPeerAddress();
-//		setupOnHeadersComplete(txn,msg);
-//	}
-//
-//	override void onNativeProtocolUpgrade(HTTPTransaction txn,CodecProtocol protocol,string protocolString,HTTPMessage msg)
-//	{
-//		setupProtocolUpgrade(txn,protocol,protocolString,msg);
-//	}
-//
-//	override void onBody(HTTPTransaction txn,const ubyte[] data){
-//		if(txn)
-//			txn.onIngressBody(data,cast(ushort)0);
-//	}
-//
-//	override void onChunkHeader(HTTPTransaction txn, size_t length){
-//		if(txn)
-//			txn.onIngressChunkHeader(length);
-//	}
-//
-//	override void onChunkComplete(HTTPTransaction txn){
-//		if(txn)
-//			txn.onIngressChunkComplete();
-//	}
-//
-//	override void onMessageComplete(HTTPTransaction txn, bool upgrade){
-//		if(txn)
-//			txn.onIngressEOM();
-//	}
-//
-//	override void onError(HTTPTransaction txn,HTTPErrorCode code){
-//		trace("ERRO : ", code);
-//		_down.httpClose();
-//	}
-//
-//	override void onAbort(HTTPTransaction txn,
-//		HTTPErrorCode code){
-//		_down.httpClose();
-//	}
-//	
-//	override void onWsFrame(HTTPTransaction txn,ref WSFrame wsf){
-//		trace(".....");
-//		if(txn)
-//			txn.onWsFrame(wsf);
-//	}
-//
-//	// HTTPCodec.CallBack }
-//protected:
-//	/**
-//   * Called by onHeadersComplete(). This function allows downstream and
-//   * upstream to do any setup (like preparing a handler) when headers are
-//   * first received from the remote side on a given transaction.
-//   */
-//	void setupOnHeadersComplete(ref HTTPTransaction txn,
-//		HTTPMessage msg);
-//
-//	void setupProtocolUpgrade(ref HTTPTransaction txn,CodecProtocol protocol,string protocolString,HTTPMessage msg);
-//protected:
-//	final void writeCallBack(ubyte[] data,size_t size)
-//	{
-//		import collie.utils.memory;
-//		gcFree(data);
-//	}
-//
-//	final void closeWriteCallBack(/*HTTPTransaction txn,*/ubyte[] data,size_t size){
-//		import collie.utils.memory;
-//		gcFree(data);
-//		//txn.onDelayedDestroy();
-//		if(_codec is null || _codec.shouldClose()) {
-//			trace("\t\t --------do close!!!");
-//			_down.httpClose();
-//		}
-//	}
-//protected:
-//	Address _localAddr;
-//	Address _peerAddr;
-//	HTTPCodec _codec;
-//
-//	HTTPSessionController _controller;
-//	SessionDown _down;
+
+    final override void send(HTTPTransaction txn,
+        HTTPMessage headers,in ubyte[] body_,
+        bool eom)
+    {
+        auto id = txn.getID;
+        HTTPCodecBuffer buffer = _codec.generateHeader(id,headers,0,(eom && body_.length == 0));
+        if(buffer is null) 
+            return;
+        if(body_.length > 0)
+            buffer = _codec.generateBody(id,body_,buffer,eom);
+        buffer.setCallback(sharedCallBackThis());
+        // TODO send buffer;
+    }
+    
+    final override void sendBody(HTTPTransaction txn,
+        in ubyte[] body_,
+        bool eom)
+    {
+        HTTPCodecBuffer buffer = null;
+        if(body_.length > 0)
+            buffer = _codec.generateBody(txn.getID,body_,buffer,eom);
+        if(buffer is null) 
+            return;
+        buffer.setCallback(sharedCallBackThis());
+        // TODO send buffer;
+    }
+
+    // TODO: send file
+    //      size_t sendIODevice(HTTPTransaction txn,
+    //            HTTPMessage headers,
+    //            IODevice device);
+    
+    final override void sendChunkBody(HTTPTransaction txn,
+        size_t length,in ubyte[] body_,
+        bool eom)
+    {
+        auto id = txn.getID;
+        HTTPCodecBuffer buffer = null;
+        if(length > 0){
+            buffer = _codec.generateChunkHeader(id,length,buffer);
+            buffer = _codec.generateBody(txn.getID,body_,buffer,eom);
+        } else {
+            buffer = _codec.generateEOM(id, buffer);
+        }
+        if(buffer is null) 
+            return;
+        buffer.setCallback(sharedCallBackThis());
+        // TODO send buffer;
+    }
+
+    
+    final override void sendWsData(HTTPTransaction txn,OpCode code,in ubyte[] data)
+    {
+        HTTPCodecBuffer buffer = null;
+        buffer = _codec.generateWsFrame(txn.getID,code,data,buffer);
+        if(buffer is null) 
+            return;
+        buffer.setCallback(sharedCallBackThis());
+        // TODO send buffer;
+    }
+
+	
+	final override void detach(HTTPTransaction txn)
+	{
+        _transaction.remove(txn.getID);
+	}
+
+	override HTTPCodec getCodec(){
+		return _codec;
+	}
+
+	void restCodeC(HTTPCodec codec){
+		if(_codec)
+			_codec.setCallback(null);
+		codec.setCallback(this);
+		_codec = codec;
+	}
+
+    override void onMessageBegin(StreamID id, HTTPMessage msg);
+	{
+	}
+
+    override void onHeadersComplete(StreamID id, HTTPMessage msg){
+        if(!msg) return;
+		trace("onHeadersComplete ------");
+        auto tx = makeIScopedRef!HTTPTransaction(yuAlloctor,TransportDirection.DOWNSTREAM,id,0);
+        auto header = SharedHttpMsg(yuAlloctor,msg);
+		msg.clientAddress = getPeerAddress();
+        msg.dstAddress = getLocalAddress();
+        _transaction[id] = tx;
+        setupOnHeadersComplete(tx,header);
+	}
+
+    override void onNativeProtocolUpgrade(StreamID id,
+        CodecProtocol protocol,
+        String protocolString,
+        HTTPMessage msg)
+    {
+        if(!msg) return;
+        trace("onNativeProtocolUpgrade ------");
+        auto tx = makeIScopedRef!HTTPTransaction(yuAlloctor,TransportDirection.DOWNSTREAM,id,0);
+        auto header = SharedHttpMsg(yuAlloctor,msg);
+        msg.clientAddress = getPeerAddress();
+        msg.dstAddress = getLocalAddress();
+        _transaction[id] = tx;
+        setupProtocolUpgrade(tx,protocol,protocolString, header);
+    }
+
+    override void onBody(StreamID id,const ubyte[] data){
+        auto txn = _transaction.get(id, SharedTansaction());
+        if(!txn.isNull)
+			txn.onIngressBody(data);
+	}
+
+    override void onChunkHeader(StreamID id, size_t length)
+    {}
+
+    override void onChunkComplete(StreamID id)
+    {}
+
+
+    void onMessageComplete(StreamID id, bool upgrade){
+        auto txn = _transaction.get(id, SharedTansaction());
+        if(!txn.isNull)
+			txn.onIngressEOM();
+	}
+
+    override void onError(StreamID id,HTTPErrorCode code){
+        auto txn = _transaction.get(id, SharedTansaction());
+        if(!txn.isNull)
+            txn.onError(code);
+	}
+
+    override void onWsFrame(StreamID id,ref WSFrame wsf){
+        auto txn = _transaction.get(id, SharedTansaction());
+        if(!txn.isNull)
+            txn.onWsFrame(wsf);
+	}
+
+    override void onSend(size_t shoudleSend, size_t sended)
+    {}
+
+protected:
+	/**
+   * Called by onHeadersComplete(). This function allows downstream and
+   * upstream to do any setup (like preparing a handler) when headers are
+   * first received from the remote side on a given transaction.
+   */
+	void setupOnHeadersComplete(ref SharedTansaction txn,
+		ref SharedHttpMsg msg);
+
+    void setupProtocolUpgrade(ref SharedTansaction txn,CodecProtocol protocol, ref String protocolString,
+        ref SharedHttpMsg msg);
+
+protected:
+	String _localAddr;
+    String _localPort;
+    String _peerAddr;
+    String _peerPort;
+	HTTPCodec _codec;
+    TansactionMap _transaction;
+
+	HTTPSessionController _controller;
+	SessionDown _down;
 }
 

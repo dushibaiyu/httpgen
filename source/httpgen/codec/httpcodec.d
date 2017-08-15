@@ -173,15 +173,6 @@ abstract class HTTPCodec
      */
 		void onError(StreamID id,HTTPErrorCode);
 		
-		/**
-     * Called when the peer has asked to shut down a stream
-     * immediately.
-     * @param stream   The stream ID
-     * @param code     The code the stream was aborted with
-     * @note  Not applicable to all protocols.
-     */
-		void onAbort(StreamID id,
-			HTTPErrorCode code);
 
         void onWsFrame(StreamID id ,ref WSFrame);
 		

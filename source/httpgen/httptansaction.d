@@ -23,7 +23,7 @@ enum TransportDirection : ubyte {
 	DOWNSTREAM,  // toward the client
 	UPSTREAM     // toward the origin application or data
 }
-version(TO_DO):
+
 interface HTTPTransactionHandler 
 {
 	/**
@@ -119,62 +119,35 @@ interface HTTPTransactionHandler
 	bool onUpgtade(CodecProtocol protocol,HTTPMessage msg);
 }
 
+//interface IODevice
+//{
+//    size_t read(size_t len,scope void delegate(in ubyte[] data));
+//}
+
 class HTTPTransaction
 {
-	alias HVector = HTTPCodec.HVector;
 	interface Transport
 	{
-		alias SocketWriteCallBack = TCPWriteCallBack;
-
-		void pauseIngress(HTTPTransaction txn);
-		
-		void resumeIngress(HTTPTransaction txn);
-		
-		void transactionTimeout(HTTPTransaction txn);
-		
-		void sendHeaders(HTTPTransaction txn,
-			HTTPMessage headers,
+		void send(HTTPTransaction txn,
+            HTTPMessage headers,in ubyte[] body_,
 			bool eom);
 		
-		size_t sendBody(HTTPTransaction txn,
-			ubyte[],
+		void sendBody(HTTPTransaction txn,
+            in ubyte[] body_,
 			bool eom);
-		size_t sendBody(HTTPTransaction txn,
-			ref HVector,
-			bool eom);
+// TODO: send file
+//		size_t sendIODevice(HTTPTransaction txn,
+//            HTTPMessage headers,
+//            IODevice device);
 		
-		size_t sendChunkHeader(HTTPTransaction txn,
-			size_t length);
-		
-		size_t sendChunkTerminator(HTTPTransaction txn);
+        void sendChunkBody(HTTPTransaction txn,
+            size_t length,in ubyte[] body_,
+            bool eom);
 
-		
-		size_t sendEOM(HTTPTransaction txn);
 
-		void socketWrite(HTTPTransaction txn,ubyte[] data,SocketWriteCallBack cback);
+        void sendWsData(HTTPTransaction txn,OpCode code,in ubyte[] data);
 
-//		size_t sendAbort(HTTPTransaction txn,
-//			HTTPErrorCode statusCode);
-
-		size_t sendWsData(HTTPTransaction txn,OpCode code,ubyte[] data);
-//		size_t sendPriority(HTTPTransaction txn,
-//			const http2::PriorityUpdate& pri);
-//		
-//		size_t sendWindowUpdate(HTTPTransaction txn,
-//			uint32_t bytes);
-		
-		void notifyPendingEgress();
-		
 		void detach(HTTPTransaction txn);
-		
-//		void notifyIngressBodyProcessed(uint32_t bytes);
-//		
-//		void notifyEgressBodyBuffered(int64_t bytes);
-		
-		Address getLocalAddress();
-		
-		Address getPeerAddress();
-
 		
 		HTTPCodec getCodec();
 		
@@ -203,12 +176,8 @@ class HTTPTransaction
 	}
 	uint getSequenceNumber() const { return _seqNo; }
 
-	HTTPCodec.StreamID getID() const { return _id; }
+	final HTTPCodec.StreamID getID() const { return _id; }
 
-
-	Address getLocalAddress(){return _transport.getLocalAddress();}
-	
-	Address getPeerAddress(){return _transport.getPeerAddress();}
 
 	/**
    * Invoked by the session when the ingress headers are complete
@@ -227,7 +196,7 @@ class HTTPTransaction
    * Invoked by the session when some or all of the ingress entity-body has
    * been parsed.
    */
-	void onIngressBody(const ubyte[] chain, ushort padding)
+	void onIngressBody(const ubyte[] chain)
 	{
 		if(_handler)
 			_handler.onBody(chain);

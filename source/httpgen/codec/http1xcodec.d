@@ -331,10 +331,11 @@ protected:
 			if(_callback)
                 _callback.onNativeProtocolUpgrade(0,pro,upstring,_message);
 		} else {
-			if(_callback)
+			if(_callback) {
 				_callback.onHeadersComplete(0,_message);
+                _message = null;
+            }
 		}
-        _message = null;
 	}
 	
 	void onMessageComplete(ref HTTP1xParser parser){
